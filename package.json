@@ -1,0 +1,11 @@
+{
+  "name": "speaker-dashboard",
+  "private": true,
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore,storage --project demo-cfp \"vitest run tests/rules --passWithNoTests\""
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.34.2",
+    "vitest": "^4.1.12"
+  }
+}
