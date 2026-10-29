@@ -59,7 +59,7 @@ export default function ListPage() {
   const select = (label: string, value: string | null, options: string[], key: 'topic' | 'level' | 'language') => (
     <select aria-label={label} value={value ?? ''} onChange={(e) => update({ [key]: e.target.value || null })}>
       <option value="">{label}: all</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {(value && !options.includes(value) ? [value, ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
   )
 
@@ -150,7 +150,7 @@ export default function ListPage() {
                     <span className="muted"> {r.score.count} {r.score.count === 1 ? 'score' : 'scores'}</span>
                   )}
                 </td>
-                <td>{r.score.revealed ? fmt(r.score.max === null || r.score.min === null ? null : r.score.max - r.score.min) : '—'}</td>
+                <td>{r.score.revealed && r.score.max !== null && r.score.min !== null ? r.score.max - r.score.min : '—'}</td>
                 <td>{r.commentCount}</td>
               </tr>
             ))}

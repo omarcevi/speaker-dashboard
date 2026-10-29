@@ -1,4 +1,4 @@
-// Shared data types. Imported by the web app with `import type`; no runtime deps.
+// Shared data types and constants. Must stay import-free: the web app bundles STATUSES/ROLES from here.
 export type Ts = { toMillis(): number };
 
 export const STATUSES = ['pending', 'maybe', 'approved', 'declined'] as const;
