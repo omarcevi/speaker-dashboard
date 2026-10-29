@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import BalanceRow from '../components/BalanceRow.tsx'
+import DecisionBar from '../components/DecisionBar.tsx'
+import ScoreBar from '../components/ScoreBar.tsx'
 import SpeakerPanel from '../components/SpeakerPanel.tsx'
 import { statusLabel } from '../components/StatusChip.tsx'
 import StatusCounts from '../components/StatusCounts.tsx'
@@ -75,6 +77,7 @@ export default function MeetingPage() {
     )
   }
 
+  const actor = { uid: me?.uid ?? '', name: me?.name ?? '' }
   const word = filter.status === 'all' ? '' : ` ${statusLabel(filter.status).toLowerCase()}`
   const label = `${nav.position ?? '—'} of ${nav.total}${word}`
 
@@ -94,10 +97,13 @@ export default function MeetingPage() {
       </div>
       <BalanceRow balance={balance} />
       <div className="meeting-cols">
-        <TalkPanel sub={sub} status={statusOf(reviews, sub.id)} />
+        <TalkPanel sub={sub} status={statusOf(reviews, sub.id)} comments={comments.get(sub.id) ?? []} me={actor} />
         <SpeakerPanel sub={sub} others={otherTalks(submissions, sub)} reviews={reviews} query={query} />
       </div>
-      <div className="meeting-bottom">{/* Task 9: ScoreBar, DecisionBar */}</div>
+      <div className="meeting-bottom">
+        <ScoreBar submissionId={sub.id} scores={scores.get(sub.id) ?? []} me={actor} showAll={showAll} />
+        {me?.role === 'admin' && <DecisionBar submissionId={sub.id} status={statusOf(reviews, sub.id)} me={actor} />}
+      </div>
     </div>
   )
 }

@@ -14,17 +14,27 @@ const app = initializeApp({ projectId: 'demo-cfp' });
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const USERS: { email: string; name: string; role: Role }[] = [
-  { email: 'admin@example.com', name: 'Admin User', role: 'admin' },
-  { email: 'member@example.com', name: 'Member User', role: 'member' },
-  { email: 'waiting@example.com', name: 'Waiting User', role: 'waiting' },
+const USERS: { uid: string; email: string; name: string; role: Role }[] = [
+  { uid: 'admin-uid', email: 'admin@example.com', name: 'Admin User', role: 'admin' },
+  { uid: 'member-uid', email: 'member@example.com', name: 'Member User', role: 'member' },
+  { uid: 'waiting-uid', email: 'waiting@example.com', name: 'Waiting User', role: 'waiting' },
 ];
 
 async function main() {
   await applySync(db, fakeSheet());
+  // The app only offers Google sign-in, so seed users as Google-provider accounts; the auth
+  // emulator's Google popup then lists them.
+  const result = await auth.importUsers(USERS.map(u => ({
+    uid: u.uid,
+    email: u.email,
+    displayName: u.name,
+    providerData: [{ uid: u.email, email: u.email, displayName: u.name, providerId: 'google.com' }],
+  })));
+  if (result.failureCount > 0) {
+    throw new Error(`importUsers failed: ${result.errors.map(e => e.error.message).join('; ')}`);
+  }
   for (const u of USERS) {
-    const rec = await auth.createUser({ email: u.email, displayName: u.name, password: 'password123' });
-    await db.doc(`users/${rec.uid}`).set({
+    await db.doc(`users/${u.uid}`).set({
       email: u.email, name: u.name, photoURL: '', role: u.role, createdAt: Timestamp.now(),
     });
   }

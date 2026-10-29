@@ -1,4 +1,7 @@
 import type { Status, Submission } from '../../../functions/src/model.ts'
+import type { Comment } from '../../../functions/src/model.ts'
+import type { Actor } from '../data/actions.ts'
+import Comments from './Comments.tsx'
 import StatusChip from './StatusChip.tsx'
 
 function Section({ label, text }: { label: string; text: string }) {
@@ -11,7 +14,12 @@ function Section({ label, text }: { label: string; text: string }) {
   )
 }
 
-export default function TalkPanel({ sub, status }: { sub: Submission; status: Status }) {
+export default function TalkPanel({ sub, status, comments, me }: {
+  sub: Submission
+  status: Status
+  comments: (Comment & { id: string })[]
+  me: Actor
+}) {
   const co = sub.coSpeaker
   return (
     <section className="talk-panel">
@@ -38,7 +46,7 @@ export default function TalkPanel({ sub, status }: { sub: Submission; status: St
           {co.bio.trim() && <p className="prose">{co.bio}</p>}
         </>
       )}
-      <div className="comments-slot">{/* Task 9: Comments */}</div>
+      <div className="comments-slot"><Comments submissionId={sub.id} comments={comments} me={me} /></div>
     </section>
   )
 }
