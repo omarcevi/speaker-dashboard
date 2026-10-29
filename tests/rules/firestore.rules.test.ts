@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import {
   assertFails,
   assertSucceeds,
@@ -21,8 +22,12 @@ const userDoc = (role: string) => ({
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
     projectId: 'demo-cfp',
-    firestore: { rules: readFileSync('firestore.rules', 'utf8') },
+    firestore: { rules: readFileSync(fileURLToPath(new URL('../../firestore.rules', import.meta.url)), 'utf8') },
   });
+});
+
+beforeEach(async () => {
+  await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'users/wait1'), userDoc('waiting'));
@@ -98,6 +103,9 @@ describe('new user', () => {
   it('cannot create its own doc as admin', async () => {
     await assertFails(setDoc(doc(as('new1'), 'users/new1'), userDoc('admin')));
   });
+  it('cannot create its own doc with an extra key', async () => {
+    await assertFails(setDoc(doc(as('new1'), 'users/new1'), { ...userDoc('waiting'), extra: 1 }));
+  });
   it('cannot create users/other', async () => {
     await assertFails(setDoc(doc(as('new1'), 'users/other'), userDoc('waiting')));
   });
@@ -160,6 +168,9 @@ describe('member comments', () => {
   });
   it("cannot edit adm1's comment", async () => {
     await assertFails(updateDoc(doc(as('mem1'), 'comments/c-adm'), { text: 'hacked', editedAt: new Date() }));
+  });
+  it('cannot change the uid of its own comment', async () => {
+    await assertFails(updateDoc(doc(as('mem1'), 'comments/c-mem'), { uid: 'adm1' }));
   });
   it('can delete its own comment', async () => {
     await assertSucceeds(deleteDoc(doc(as('mem1'), 'comments/c-mem')));
