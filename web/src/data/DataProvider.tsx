@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
 import type { Comment, Review, Score, Submission, SyncMeta } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
@@ -13,6 +13,7 @@ interface DataValue {
   comments: Map<string, CommentWithId[]>
   sync: SyncMeta | null
   loading: boolean
+  error: string | null
 }
 
 const empty: DataValue = {
@@ -22,6 +23,7 @@ const empty: DataValue = {
   comments: new Map(),
   sync: null,
   loading: true,
+  error: null,
 }
 
 const DataContext = createContext<DataValue>(empty)
@@ -52,6 +54,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const markReady = (key: string) => setReady((r) => (r.has(key) ? r : new Set(r).add(key)))
     const fail = (key: string) => (e: Error) => {
       console.error(`Listener ${key} failed`, e)
+      setData((p) => ({ ...p, error: "Couldn't load live data. Some information may be missing or out of date." }))
       markReady(key)
     }
     const unsubs = [
@@ -87,7 +90,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [allowed])
 
-  const value = { ...data, loading: allowed && ready.size < SOURCES }
+  const value = useMemo(() => ({ ...data, loading: allowed && ready.size < SOURCES }), [data, allowed, ready])
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

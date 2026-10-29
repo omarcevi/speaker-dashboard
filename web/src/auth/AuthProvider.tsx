@@ -16,10 +16,13 @@ type Me = UserDoc & { uid: string }
 interface AuthValue {
   user: User | null
   me: Me | null
+  error: string | null
   state: AuthState
   signIn(): Promise<void>
   signOut(): Promise<void>
 }
+
+const ACCOUNT_ERROR = "Couldn't load your account. Try signing out and in again."
 
 const AuthContext = createContext<AuthValue | null>(null)
 
@@ -27,13 +30,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [state, setState] = useState<AuthState>('loading')
   const [me, setMe] = useState<Me | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(
     () =>
       onAuthStateChanged(auth, (u) => {
         setUser(u)
         setState(u ? 'signedIn' : 'signedOut')
-        if (!u) setMe(null)
+        if (!u) {
+          setMe(null)
+          setError(null)
+        }
       }),
     [],
   )
@@ -47,8 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ref,
       (snap) => {
         if (snap.exists()) {
+          setError(null)
           setMe({ ...(snap.data() as UserDoc), uid })
-        } else if (!creating) {
+        } else if (!creating && !snap.metadata.fromCache) {
           creating = true
           const email = user.email ?? ''
           setDoc(ref, {
@@ -57,10 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             photoURL: user.photoURL ?? '',
             role: 'waiting',
             createdAt: serverTimestamp(),
-          }).catch((e) => console.error('Could not create user doc', e))
+          }).catch((e) => {
+            console.error('Could not create user doc', e)
+            creating = false
+            setError(ACCOUNT_ERROR)
+          })
         }
       },
-      (e) => console.error('User doc listener failed', e),
+      (e) => {
+        console.error('User doc listener failed', e)
+        setError(ACCOUNT_ERROR)
+      },
     )
     return unsub
   }, [uid])
@@ -69,13 +84,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       me,
+      error,
       state,
       signIn: async () => {
         await signInWithPopup(auth, new GoogleAuthProvider())
       },
       signOut: () => fbSignOut(auth),
     }),
-    [user, me, state],
+    [user, me, error, state],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

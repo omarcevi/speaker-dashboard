@@ -38,3 +38,5 @@ button.primary:hover { background: #1647b8; }
 .nav .who { color: #52525b; }
 
 .content { padding: 1.25rem; }
+
+.banner { padding: 0.6rem 1.25rem; background: var(--st-declined); color: #7f1d1d; border-bottom: 1px solid var(--border); }

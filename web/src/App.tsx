@@ -11,9 +11,17 @@ import TeamPage from './pages/TeamPage.tsx'
 import WaitingPage from './pages/WaitingPage.tsx'
 
 function Shell() {
-  const { state, me } = useAuth()
+  const { state, me, error, signOut } = useAuth()
   const g = gate(state, me?.role ?? null)
 
+  if (error && g === 'loading') {
+    return (
+      <main className="center-page">
+        <p className="error">{error}</p>
+        <button onClick={() => void signOut()}>Sign out</button>
+      </main>
+    )
+  }
   if (g === 'loading') return <main className="center-page"><p>Loading…</p></main>
   if (g === 'signin') return <SignInPage />
   if (g === 'waiting' || g === 'removed') return <WaitingPage removed={g === 'removed'} />
