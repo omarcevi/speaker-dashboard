@@ -36,14 +36,25 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
   const drive = google.drive({ version: 'v3', auth });
   const bucket = getStorage().bucket();
-  return subs => syncPhotos(subs, {
-    exists: async path => (await bucket.file(path).exists())[0],
-    download: async fileId => {
-      const res = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
-      return { data: Buffer.from(res.data as ArrayBuffer), contentType: String(res.headers['content-type'] ?? '').split(';')[0].trim() };
-    },
-    save: async (path, data, contentType) => { await bucket.file(path).save(data, { contentType, resumable: false }); },
-  });
+  return async subs => {
+    const r = await syncPhotos(subs, {
+      exists: async path => (await bucket.file(path).exists())[0],
+      meta: async fileId => {
+        const res = await drive.files.get({ fileId, fields: 'mimeType,size', supportsAllDrives: true });
+        return { mimeType: res.data.mimeType ?? '', size: Number(res.data.size ?? Infinity) };
+      },
+      download: async fileId => {
+        const res = await drive.files.get(
+          { fileId, alt: 'media', supportsAllDrives: true },
+          { responseType: 'arraybuffer', maxContentLength: 10 * 1024 * 1024 },
+        );
+        return { data: Buffer.from(res.data as ArrayBuffer) };
+      },
+      save: async (path, data, contentType) => { await bucket.file(path).save(data, { contentType, resumable: false }); },
+    });
+    console.log(`Photo sync: copied=${r.copied} skipped=${r.skipped} failed=[${r.failed.join(',')}]`);
+    return r;
+  };
 }
 
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300 }, async request => {

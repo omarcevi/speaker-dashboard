@@ -40,7 +40,7 @@ export default function SpeakerPanel({ sub, others, reviews, query }: Props) {
   return (
     <section className="speaker-panel">
       <div className="speaker-head">
-        <SpeakerPhoto fileId={sub.photoFileId} url={sub.photoUrl} />
+        <SpeakerPhoto key={sub.photoFileId ?? 'none'} fileId={sub.photoFileId} url={sub.photoUrl} />
         <div>
           <b>{sub.firstName} {sub.lastName}</b>
           {role && <div className="muted">{role}</div>}
