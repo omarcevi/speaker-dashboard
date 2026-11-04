@@ -10,3 +10,5 @@ dist
 serviceAccount*.json
 *-debug.log
 .firebase/
+.playwright-mcp/
+.DS_Store
