@@ -28,8 +28,9 @@ export function logisticsRows(subs: Submission[], reviews: Map<string, Review>):
   for (const s of approved) bySpeaker.set(s.speakerKey, [...(bySpeaker.get(s.speakerKey) ?? []), s])
 
   const rows: LogisticsRow[] = []
-  for (const talks of bySpeaker.values()) {
-    const latest = talks.reduce((a, b) => (b.row > a.row ? b : a))
+  for (let talks of bySpeaker.values()) {
+    talks = [...talks].sort((a, b) => a.row - b.row)
+    const latest = talks[talks.length - 1]
     rows.push({
       kind: 'speaker',
       name: fullName(latest.firstName, latest.lastName),
@@ -55,24 +56,27 @@ export function logisticsRows(subs: Submission[], reviews: Map<string, Review>):
   return rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
 }
 
+const PHONE_COL = 3
 const HEADER = [
   'Type', 'Name', 'Email', 'Phone', 'Talks', 'From abroad', 'Coming from (abroad)', 'Outside Istanbul', 'City',
   'Transport support', 'Accommodation support', 'Istanbul tour', 'After party', 'T-shirt', 'Other requirements', 'Anything else',
 ]
 
-function field(value: string): string {
+function field(value: string, isPhone = false): string {
   let v = value
-  if (/^[=+\-@\t\r]/.test(v) && !/^\+?[\d\s().-]+$/.test(v)) v = `'${v}`
-  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  const phoneOk = isPhone && /^\+\d[\d\s().-]*$/.test(v)
+  if (/^[=+\-@\t\r]/.test(v) && !phoneOk) v = `'${v}`
+  return `"${v.replace(/"/g, '""')}"`
 }
 
 export function toCsv(rows: LogisticsRow[]): string {
-  const lines = [HEADER.map(field).join(',')]
+  const lines = [HEADER.map((h) => field(h)).join(',')]
   for (const r of rows) {
-    lines.push([
+    const cells = [
       r.kind, r.name, r.email, r.phone, r.talks, r.fromAbroad, r.abroadFrom, r.outsideIstanbul, r.city,
       r.transport, r.accommodation, r.tour, r.afterParty, r.tshirt, r.otherRequirements, r.anythingElse,
-    ].map(field).join(','))
+    ]
+    lines.push(cells.map((c, i) => field(c, i === PHONE_COL)).join(','))
   }
   return '﻿' + lines.join('\r\n')
 }

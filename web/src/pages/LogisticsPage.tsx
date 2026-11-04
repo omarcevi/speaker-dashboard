@@ -10,7 +10,7 @@ function exportCsv(csv: string) {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export default function LogisticsPage() {
