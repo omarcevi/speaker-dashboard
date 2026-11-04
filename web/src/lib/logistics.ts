@@ -66,6 +66,8 @@ function field(value: string, isPhone = false): string {
   let v = value
   const phoneOk = isPhone && /^\+\d[\d\s().-]*$/.test(v)
   if (/^[=+\-@\t\r]/.test(v) && !phoneOk) v = `'${v}`
+  // Excel in Turkish locale may split on ';' or tab regardless of quoting
+  v = v.replace(/([;\t]\s*)([=+\-@])/g, "$1'$2")
   return `"${v.replace(/"/g, '""')}"`
 }
 

@@ -59,7 +59,9 @@ describe('toCsv', () => {
     expect(toCsv([row({ city: 'Paris, France' })])).toContain('"Paris, France"')
     expect(toCsv([row({ city: 'say "hi"' })])).toContain('"say ""hi"""')
     expect(toCsv([row({ city: 'line1\nline2' })])).toContain('"line1\nline2"')
-    expect(toCsv([row({ city: 'a;=1+1' })])).toContain(',"a;=1+1",')
+    expect(toCsv([row({ city: 'a;=1+1' })])).toContain(`,"a;'=1+1",`)
+    expect(toCsv([row({ city: 'x;\t @y' })])).toContain(`,"x;\t '@y",`)
+    expect(toCsv([row({ city: 'Python; Go' })])).toContain(',"Python; Go",')
   })
   it('keeps Turkish characters', () => {
     const csv = toCsv([row({ city: 'Türkiye', abroadFrom: 'İstanbul' })])
