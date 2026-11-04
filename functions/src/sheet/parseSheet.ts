@@ -61,7 +61,9 @@ export function parseSheet(values: string[][]): { submissions: SubmissionData[];
       },
       consent: { codeOfConduct: get('codeOfConduct'), recording: get('recording'), personalData: get('personalData') },
     };
-    const contentHash = createHash('sha1').update(JSON.stringify(data)).digest('hex');
+    // id and row are left out so the same answers hash the same wherever they sit; planSync uses that to spot moved rows.
+    const { id: _id, row: _row, ...content } = data;
+    const contentHash = createHash('sha1').update(JSON.stringify(content)).digest('hex');
     submissions.push({ ...data, contentHash });
   }
   return { submissions, missingColumns: missing };

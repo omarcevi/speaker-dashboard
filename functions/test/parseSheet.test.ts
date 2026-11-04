@@ -52,6 +52,13 @@ describe('parseSheet', () => {
     expect(a.contentHash).toBe(b.contentHash);
     expect(c.contentHash).not.toBe(a.contentHash);
   });
+  it('contentHash ignores id and row: same answers at rows 2 and 5 hash the same', () => {
+    const rows = [makeRow(), makeRow({ title: 'Other' }), makeRow({ title: 'Other2' }), makeRow()];
+    const subs = parse(rows).submissions;
+    expect(subs[0].id).toBe('row-2');
+    expect(subs[3].id).toBe('row-5');
+    expect(subs[3].contentHash).toBe(subs[0].contentHash);
+  });
   it('fakeSheet parses with no missing columns', () => {
     const r = parseSheet(fakeSheet());
     expect(r.missingColumns).toEqual([]);

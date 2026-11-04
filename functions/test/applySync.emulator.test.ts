@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { applySync } from '../src/sync/applySync.js';
-import { HEADER_ROW, makeRow } from '../src/testing/fakeRows.js';
+import { HEADER_ROW, makeRow, fakeSheet } from '../src/testing/fakeRows.js';
 
 const db = getFirestore(initializeApp({ projectId: 'demo-cfp' }));
 
@@ -29,5 +29,24 @@ describe('applySync', () => {
     expect((await db.collection('submissions').get()).size).toBe(2);
     expect(r).toMatchObject({ added: 0, updated: 1, removed: 1, total: 1 });
     expect((await db.doc('meta/sync').get()).data()).toMatchObject({ error: null, total: 1 });
+  });
+
+  it('pauses and writes nothing when rows moved', async () => {
+    const sheet = fakeSheet();
+    await applySync(db, sheet);
+    await db.doc('reviews/row-2').set({ status: 'approved', updatedBy: 'u1' });
+    const before = await snapshotOf(['submissions/row-2', 'submissions/row-3', 'reviews/row-2']);
+    const swapped = [sheet[0], sheet[2], sheet[1], ...sheet.slice(3)];
+    await expect(applySync(db, swapped)).rejects.toThrow('Rows moved');
+    expect(await snapshotOf(['submissions/row-2', 'submissions/row-3', 'reviews/row-2'])).toEqual(before);
+  });
+
+  it('refuses to sync when a required column is missing and writes nothing', async () => {
+    const noEmail = HEADER_ROW.filter(h => h !== 'Email');
+    const emailIdx = HEADER_ROW.indexOf('Email');
+    const row = makeRow().filter((_, i) => i !== emailIdx);
+    await expect(applySync(db, [noEmail, row])).rejects.toThrow('Required columns missing from the sheet: email');
+    expect((await db.collection('submissions').get()).size).toBe(0);
+    expect((await db.doc('meta/sync').get()).exists).toBe(false);
   });
 });

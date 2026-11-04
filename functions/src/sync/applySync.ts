@@ -8,6 +8,10 @@ const BATCH_SIZE = 450;
 /** Upserts sheet rows into `submissions` and writes `meta/sync`. Touches nothing else. */
 export async function applySync(db: Firestore, values: string[][], now?: Date): Promise<SyncResult> {
   const { submissions, missingColumns } = parseSheet(values);
+  const requiredMissing = missingColumns.filter(c => c === 'timestamp' || c === 'email' || c === 'title');
+  if (requiredMissing.length > 0) {
+    throw new Error(`Required columns missing from the sheet: ${requiredMissing.join(', ')}. Check the header row of "Form Responses 1".`);
+  }
   const at = Timestamp.fromDate(now ?? new Date());
 
   const snap = await db.collection('submissions').select('contentHash', 'removedFromSheet').get();
@@ -17,6 +21,11 @@ export async function applySync(db: Firestore, values: string[][], now?: Date): 
     removedFromSheet: d.get('removedFromSheet') === true,
   }));
   const plan = planSync(submissions, existing);
+
+  if (plan.moved.length > 0) {
+    const ex = plan.moved[0]!;
+    throw new Error(`Rows moved in the sheet (${plan.moved.length} rows, e.g. ${ex.from} is now ${ex.id}). Undo the sort/insert/delete in "Form Responses 1". Sync is paused so reviews stay with the right talks.`);
+  }
 
   const col = db.collection('submissions');
   const writes: ((b: FirebaseFirestore.WriteBatch) => void)[] = [

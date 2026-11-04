@@ -27,6 +27,25 @@ describe('runSync', () => {
     expect((await db.doc('meta/sync').get()).get('error')).toBeNull();
   });
 
+  it('first-ever failure leaves meta/sync with an error and no lastSyncedAt', async () => {
+    await expect(runSync(db, failing('boom'), { now: t1 })).rejects.toThrow('boom');
+    const data = (await db.doc('meta/sync').get()).data()!;
+    expect(data.error).toContain('boom');
+    expect(data.lastErrorAt).toEqual(Timestamp.fromDate(t1));
+    expect(data.lastSyncedAt).toBeUndefined();
+    expect(data.missingColumns).toBeUndefined();
+  });
+
+  it('a rows-moved failure is recorded in meta/sync.error and leaves submissions untouched', async () => {
+    const sheet = fakeSheet();
+    await runSync(db, async () => sheet, { now: t1 });
+    const before = (await db.doc('submissions/row-2').get()).data();
+    await expect(runSync(db, async () => [sheet[0], sheet[2], sheet[1], ...sheet.slice(3)], { now: t2 }))
+      .rejects.toThrow('Rows moved');
+    expect((await db.doc('meta/sync').get()).get('error')).toContain('Rows moved');
+    expect((await db.doc('submissions/row-2').get()).data()).toEqual(before);
+  });
+
   it('treats a header-only sheet as an error and removes nothing', async () => {
     await runSync(db, async () => fakeSheet(), { now: t1 });
     await expect(runSync(db, async () => [HEADER_ROW], { now: t2 })).rejects.toThrow('no rows');
