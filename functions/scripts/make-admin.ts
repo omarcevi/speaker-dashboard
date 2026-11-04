@@ -3,7 +3,7 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-const email = process.argv[2];
+const email = process.argv[2]?.trim().toLowerCase();
 if (!email) {
   console.error('Usage: npx tsx scripts/make-admin.ts <email>');
   process.exit(1);
@@ -13,7 +13,7 @@ async function main() {
   const db = getFirestore(initializeApp());
   const snap = await db.collection('users').where('email', '==', email).get();
   if (snap.empty) {
-    console.error('No user found. Sign in to the dashboard once first.');
+    console.error(`No user with email ${email}. Sign in to the dashboard once first, and check the spelling.`);
     process.exit(1);
   }
   if (snap.size > 1) {

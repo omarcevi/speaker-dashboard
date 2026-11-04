@@ -97,6 +97,7 @@ You do these steps once, in the Firebase and Google Cloud consoles.
    - `web/.env.production`: copy the `VITE_FIREBASE_*` values from Firebase console → Project settings → Your apps → Web app (create a web app there if there isn't one), and set `VITE_USE_EMULATORS=false`.
 6. **Deploy:**
    ```bash
+   npx firebase login
    npm run build --prefix web && npx firebase deploy --project speaker-dashboard-9c149
    ```
    The first deploy may ask to grant the Storage service a role so `storage.rules` can read user roles from Firestore. Accept it. Cloud Scheduler is enabled automatically for the 15-minute sync.
@@ -107,6 +108,7 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      gcloud auth application-default login
      cd functions && GOOGLE_CLOUD_PROJECT=speaker-dashboard-9c149 npx tsx scripts/make-admin.ts you@example.com
      ```
+   - No CLI? In the Firebase console, go to Firestore → `users` → your document and set `role` to `admin`.
    - Reload the page. From then on, approve everyone else from the **Team** page.
 
 ## Team rules
@@ -115,7 +117,7 @@ You do these steps once, in the Firebase and Google Cloud consoles.
 - If someone edits their form response, the change shows up on the next sync. The talk keeps its scores, comments and decision.
 - A talk whose row disappears from the sheet is hidden and marked as removed, not deleted. Tick "Show removed rows" on the list to see it.
 - **Opening the logistics CSV:**
-  - Google Sheets: use **File → Import**.
-  - Excel: use **Data → From Text/CSV**.
+  - **Google Sheets:** File → Import → Upload. Under "Convert text to numbers, dates, and formulas", choose **No**. This keeps `+90 …` phone numbers as text and stops any formula from running.
+  - **Excel:** Data → From Text/CSV.
 
-  Double-clicking the file in Excel with Turkish regional settings splits columns on `;` and garbles the layout.
+  Double-clicking the file in Turkish-locale Excel splits columns on `;`.
