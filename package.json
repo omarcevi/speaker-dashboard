@@ -2,7 +2,7 @@
   "name": "speaker-dashboard",
   "private": true,
   "scripts": {
-    "test": "firebase emulators:exec --only firestore,storage --project demo-cfp \"vitest run tests/rules\""
+    "test": "firebase emulators:exec --only firestore,storage --project demo-cfp \"vitest run --no-file-parallelism tests/rules\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",

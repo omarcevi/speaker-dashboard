@@ -18,7 +18,12 @@ export async function runSync(
     // An empty read must not reach applySync, which would soft-remove every submission.
     if (values.length < 2) throw new Error('Sheet returned no rows');
     const result = await applySync(db, values, now);
-    await opts.photos?.(parseSheet(values).submissions);
+    // Photos are best effort: a failure is logged but never fails the sync or sets meta/sync.error.
+    try {
+      await opts.photos?.(parseSheet(values).submissions);
+    } catch (photoErr) {
+      console.error('Photo sync failed', photoErr);
+    }
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

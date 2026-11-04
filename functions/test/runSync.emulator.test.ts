@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { runSync } from '../src/sync/runSync.js';
@@ -39,5 +39,15 @@ describe('runSync', () => {
     let got = 0;
     await runSync(db, async () => fakeSheet(), { now: t1, photos: async subs => { got = subs.length; } });
     expect(got).toBeGreaterThan(0);
+  });
+
+  it('does not fail the sync or set meta/sync.error when the photos hook throws', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(runSync(db, async () => fakeSheet(), {
+      now: t1, photos: async () => { throw new Error('drive down'); },
+    })).resolves.toBeDefined();
+    expect((await db.doc('meta/sync').get()).get('error')).toBeNull();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
