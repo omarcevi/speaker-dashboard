@@ -32,4 +32,5 @@ export interface Score { submissionId: string; uid: string; name: string; value:
 export interface Comment { submissionId: string; uid: string; name: string; text: string; createdAt: Ts; editedAt: Ts | null } // comments/{auto}
 export interface UserDoc { email: string; name: string; photoURL: string; role: Role; createdAt: Ts } // users/{uid}
 export interface SyncResult { added: number; updated: number; removed: number; total: number; missingColumns: string[] }
-export interface SyncMeta extends SyncResult { lastSyncedAt: Ts; error: string | null; lastErrorAt: Ts | null } // meta/sync
+// meta/sync. A failed first sync writes only error + lastErrorAt, so everything else may be absent.
+export interface SyncMeta extends Partial<SyncResult> { lastSyncedAt?: Ts | null; error: string | null; lastErrorAt: Ts | null }

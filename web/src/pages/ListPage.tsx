@@ -6,25 +6,8 @@ import RefreshButton from '../components/RefreshButton.tsx'
 import StatusChip, { statusLabel } from '../components/StatusChip.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery, type ListFilter, type SortKey } from '../lib/listView.ts'
+import { loadShowAll, saveShowAll } from '../lib/prefs.ts'
 import { statusCounts } from '../lib/status.ts'
-
-const STORAGE_KEY = 'showAllScores'
-
-function loadShowAll(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-function saveShowAll(v: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(v))
-  } catch {
-    // storage unavailable; the choice just won't persist
-  }
-}
 
 function distinct(values: string[]): string[] {
   return [...new Set(values.filter((v) => v !== ''))].sort((a, b) => a.localeCompare(b))

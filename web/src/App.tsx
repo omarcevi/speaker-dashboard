@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthProvider.tsx'
 import { gate } from './auth/gate.ts'
 import { DataProvider } from './data/DataProvider.tsx'
+import ErrorBoundary from './components/ErrorBoundary.tsx'
 import Nav from './components/Nav.tsx'
 import ListPage from './pages/ListPage.tsx'
 import LogisticsPage from './pages/LogisticsPage.tsx'
@@ -45,9 +46,11 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Shell />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <Shell />
+        </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

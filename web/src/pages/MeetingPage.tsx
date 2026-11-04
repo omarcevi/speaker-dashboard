@@ -11,17 +11,10 @@ import TalkPanel from '../components/TalkPanel.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { approvedBalance } from '../lib/balance.ts'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery } from '../lib/listView.ts'
+import { loadShowAll } from '../lib/prefs.ts'
 import { neighbors } from '../lib/sequence.ts'
 import { otherTalks } from '../lib/speakers.ts'
 import { statusCounts, statusOf } from '../lib/status.ts'
-
-function loadShowAll(): boolean {
-  try {
-    return localStorage.getItem('showAllScores') === 'true'
-  } catch {
-    return false
-  }
-}
 
 export default function MeetingPage() {
   const { id = '' } = useParams()
@@ -31,6 +24,8 @@ export default function MeetingPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [showAll] = useState(loadShowAll)
+
+  useEffect(() => { window.scrollTo(0, 0) }, [id])
 
   const { filter, sort } = readQuery(params)
   const query = params.toString()
