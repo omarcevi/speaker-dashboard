@@ -2,6 +2,7 @@ import type { Status, Submission } from '../../../functions/src/model.ts'
 import type { Comment } from '../../../functions/src/model.ts'
 import type { Actor } from '../data/actions.ts'
 import Comments from './Comments.tsx'
+import StatusHistory from './StatusHistory.tsx'
 import StatusChip from './StatusChip.tsx'
 
 function Section({ label, text }: { label: string; text: string }) {
@@ -32,6 +33,7 @@ export default function TalkPanel({ sub, status, comments, me }: {
         {sub.noSession && <span className="tag">No session</span>}
         {sub.removedFromSheet && <span className="tag">Removed</span>}
       </div>
+      <StatusHistory key={`history-${sub.id}`} submissionId={sub.id} />
       <h2 className="talk-title">{sub.title}</h2>
       <Section label="Abstract" text={sub.abstract} />
       <Section label="Key takeaways" text={sub.takeaways} />
@@ -41,7 +43,7 @@ export default function TalkPanel({ sub, status, comments, me }: {
           <div className="lbl">Co-speaker</div>
           <p>
             <b>{co.firstName} {co.lastName}</b>
-            {co.photoUrl && <> · <a href={co.photoUrl} target="_blank" rel="noopener noreferrer">Open photo ↗</a></>}
+            {/^https?:\/\//.test(co.photoUrl) && <> · <a href={co.photoUrl} target="_blank" rel="noopener noreferrer">Open photo ↗</a></>}
           </p>
           {co.bio.trim() && <p className="prose">{co.bio}</p>}
         </>

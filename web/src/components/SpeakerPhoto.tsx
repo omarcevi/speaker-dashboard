@@ -25,5 +25,5 @@ export default function SpeakerPhoto({ fileId, url }: { fileId: string | null; u
     return <img src={load.src} alt="Speaker photo" width={96} height={96} style={{ ...circle, objectFit: 'cover' }}
       onError={() => setLoad({ state: 'failed' })} />
   }
-  return url ? <a href={url} target="_blank" rel="noopener noreferrer">Open photo ↗</a> : null
+  return /^https?:\/\//.test(url) ? <a href={url} target="_blank" rel="noopener noreferrer">Open photo ↗</a> : null
 }
