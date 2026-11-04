@@ -5,7 +5,11 @@ import { setStatus, type Actor } from '../data/actions.ts'
 import { db } from '../firebase.ts'
 import { statusLabel } from './StatusChip.tsx'
 
-const CHOICES: Status[] = ['approved', 'maybe', 'declined']
+const CHOICES: { status: Status; label: string }[] = [
+  { status: 'approved', label: 'Approve' },
+  { status: 'maybe', label: 'Maybe' },
+  { status: 'declined', label: 'Decline' },
+]
 
 type HistoryItem = Omit<StatusChange, 'at'> & { id: string; at: { toDate(): Date } | null }
 
@@ -50,10 +54,10 @@ export default function DecisionBar({ submissionId, status, me }: { submissionId
     <div className="decision-bar">
       <div className="decision-btns">
         <span className="lbl">Decision</span>
-        {CHOICES.map((c) => (
+        {CHOICES.map(({ status: c, label }) => (
           <button key={c} className={status === c ? 'decision-btn current' : 'decision-btn'}
             style={{ background: `var(--st-${c})` }} aria-pressed={status === c}
-            disabled={busy} onClick={() => choose(c)}>{statusLabel(c)}</button>
+            disabled={busy} onClick={() => choose(c)}>{label}</button>
         ))}
         {error && <span className="inline-error" role="alert">{error}</span>}
       </div>

@@ -39,14 +39,14 @@ export default function ScoreBar({ submissionId, scores, me, showAll }: {
       )}
       <span className="score-summary">
         {s.revealed && s.avg !== null
-          ? `Team: ${s.avg} avg from ${s.count} scores (${s.min}–${s.max})`
-          : `${s.count} scores · score to reveal`}
+          ? `Team: ${s.avg} avg from ${s.count} ${s.count === 1 ? 'score' : 'scores'} (${s.min}–${s.max})`
+          : `${s.count} ${s.count === 1 ? 'score' : 'scores'} · score to reveal`}
       </span>
       {s.revealed && s.entries.length > 0 && (
         <details className="score-who">
           <summary>who</summary>
           <ul>
-            {s.entries.map((e) => <li key={e.name + e.value}>{e.name} {e.value}</li>)}
+            {s.entries.map((e, i) => <li key={i}>{e.name} {e.value}</li>)}
           </ul>
         </details>
       )}

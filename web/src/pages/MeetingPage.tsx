@@ -101,8 +101,8 @@ export default function MeetingPage() {
         <SpeakerPanel sub={sub} others={otherTalks(submissions, sub)} reviews={reviews} query={query} />
       </div>
       <div className="meeting-bottom">
-        <ScoreBar submissionId={sub.id} scores={scores.get(sub.id) ?? []} me={actor} showAll={showAll} />
-        {me?.role === 'admin' && <DecisionBar submissionId={sub.id} status={statusOf(reviews, sub.id)} me={actor} />}
+        <ScoreBar key={`score-${sub.id}`} submissionId={sub.id} scores={scores.get(sub.id) ?? []} me={actor} showAll={showAll} />
+        {me?.role === 'admin' && <DecisionBar key={`decision-${sub.id}`} submissionId={sub.id} status={statusOf(reviews, sub.id)} me={actor} />}
       </div>
     </div>
   )

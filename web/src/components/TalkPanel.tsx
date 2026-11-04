@@ -46,7 +46,7 @@ export default function TalkPanel({ sub, status, comments, me }: {
           {co.bio.trim() && <p className="prose">{co.bio}</p>}
         </>
       )}
-      <div className="comments-slot"><Comments submissionId={sub.id} comments={comments} me={me} /></div>
+      <div className="comments-slot"><Comments key={sub.id} submissionId={sub.id} comments={comments} me={me} /></div>
     </section>
   )
 }

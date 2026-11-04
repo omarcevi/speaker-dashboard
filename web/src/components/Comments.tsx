@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import type { Comment } from '../../../functions/src/model.ts'
 import { addComment, deleteComment, editComment, type Actor } from '../data/actions.ts'
 
@@ -42,7 +42,11 @@ function CommentItem({ c, me }: { c: CommentWithId; me: Actor }) {
   const [error, setError] = useState<string | null>(null)
   const mine = c.uid === me.uid
 
+  const inFlight = useRef(false)
+
   const run = async (what: string, fn: () => Promise<void>, done: () => void) => {
+    if (inFlight.current) return
+    inFlight.current = true
     setBusy(true)
     setError(null)
     try {
@@ -51,6 +55,7 @@ function CommentItem({ c, me }: { c: CommentWithId; me: Actor }) {
     } catch (e) {
       setError(`Couldn't ${what}: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
@@ -104,10 +109,12 @@ export default function Comments({ submissionId, comments, me }: { submissionId:
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
 
   const add = async () => {
     const t = text.trim()
-    if (!t || t.length > 5000) return
+    if (!t || t.length > 5000 || inFlight.current) return
+    inFlight.current = true
     setBusy(true)
     setError(null)
     try {
@@ -116,6 +123,7 @@ export default function Comments({ submissionId, comments, me }: { submissionId:
     } catch (e) {
       setError(`Couldn't add your comment: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
