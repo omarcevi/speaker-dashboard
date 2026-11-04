@@ -1,5 +1,5 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
-import type { Status } from '../../../functions/src/model.ts'
+import type { Role, Status } from '../../../functions/src/model.ts'
 import { db } from '../firebase.ts'
 
 export interface Actor { uid: string; name: string }
@@ -49,4 +49,8 @@ export async function editComment(commentId: string, text: string): Promise<void
 
 export async function deleteComment(commentId: string): Promise<void> {
   await deleteDoc(doc(db, 'comments', commentId))
+}
+
+export async function setRole(uid: string, role: Role): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { role })
 }
