@@ -147,6 +147,34 @@ describe('vertexAiClient', () => {
       { ...good, student: { value: 'no', why: ' ' } }, { ...good, community: { value: '', why: 'w' } },
     ]) await expect(mk(stub(JSON.stringify(bad)).genai).overview('x')).rejects.toThrow(/invalid/);
   });
+  it('overview rejects over-long free text', async () => {
+    const x = (n: number) => 'x'.repeat(n);
+    for (const bad of [
+      { ...good, talk: x(401) }, { ...good, speaker: x(401) },
+      { ...good, abstract: { value: 'clear', why: x(301) } }, { ...good, community: { value: 'GDG', why: x(301) } },
+      { ...good, speaking: { value: 'some', why: x(301) } }, { ...good, student: { value: 'no', why: x(301) } },
+      { ...good, community: { value: x(121), why: 'w' } },
+    ]) await expect(mk(stub(JSON.stringify(bad)).genai).overview('x')).rejects.toThrow(/invalid/);
+    const atCap = {
+      ...good, talk: x(400), speaker: x(400), community: { value: x(120), why: x(300) },
+      abstract: { value: 'clear', why: x(300) }, speaking: { value: 'some', why: x(300) }, student: { value: 'no', why: x(300) },
+    };
+    expect(validateOverview(atCap)).toEqual(atCap);
+  });
+  it('the overview schema caps every free-text field', () => {
+    const p = OVERVIEW_SCHEMA.properties as any;
+    expect(p.talk.maxLength).toBe(400);
+    expect(p.speaker.maxLength).toBe(400);
+    for (const f of ['abstract', 'community', 'speaking', 'student']) expect(p[f].properties.why.maxLength).toBe(300);
+    expect(p.community.properties.value.maxLength).toBe(120);
+  });
+  it('caps output tokens on both generation calls', async () => {
+    const s = stub(JSON.stringify(good));
+    const c = mk(s.genai);
+    await c.overview('x');
+    await c.nameClusters([['a']]);
+    expect(s.gen.map((r) => r.config.maxOutputTokens)).toEqual([2048, 512]);
+  });
   it('nameClusters returns labels in group order via system prompt and schema', async () => {
     const s = stub(JSON.stringify({ labels: [{ id: 1, label: 'B & C' }, { id: 0, label: 'A' }] }));
     expect(await mk(s.genai).nameClusters([['x'], ['y']])).toEqual(['A', 'B & C']);

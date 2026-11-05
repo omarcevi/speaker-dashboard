@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
 import type { AiOverview } from '../model';
-import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt';
+import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, OVERVIEW_LIMITS, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt';
 import { escapeAngles } from './inputs';
 
 /** Overviews and cluster names. Vertex serves it only on `global` or the `us`/`eu` multi-regions; we use `eu`. */
@@ -9,6 +9,10 @@ export const EMBED_MODEL = 'gemini-embedding-001';
 export const EMBED_DIMS = 768;
 /** Texts per embedContent request. Vertex gemini-embedding-001 accepts one input per request; raise only if that changes. */
 export const EMBED_BATCH = 1;
+/** Output token caps. The overview's capped fields need well under 1,000 tokens; the rest is room for thinking. */
+export const OVERVIEW_MAX_TOKENS = 2048;
+/** At most 10 labels of a few words each. */
+export const CLUSTER_MAX_TOKENS = 512;
 /** Per-request deadline. The SDK aborts the request when it runs out, and the call rejects like any other failure. */
 export const AI_TIMEOUT_MS = 60_000;
 
@@ -28,7 +32,7 @@ export interface GenAiLike {
       contents: string;
       config?: {
         systemInstruction?: string; responseMimeType?: string; responseJsonSchema?: unknown;
-        thinkingConfig?: ThinkingConfig; httpOptions?: { timeout?: number };
+        maxOutputTokens?: number; thinkingConfig?: ThinkingConfig; httpOptions?: { timeout?: number };
       };
     }): Promise<{ text?: string }>;
     embedContent(p: {
@@ -44,8 +48,10 @@ const SPEAKING = ['none', 'minimal', 'some', 'a lot'];
 const STUDENT = ['yes', 'no', 'unclear'];
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const flagOk = (v: unknown, allowed?: string[]) =>
-  isObj(v) && typeof v.why === 'string' && v.why.trim() !== '' && typeof v.value === 'string' && v.value.trim() !== '' && (!allowed || allowed.includes(v.value));
+/** Non-blank and at most `max` characters, counted like JSON Schema's maxLength (code points). */
+const text = (v: unknown, max: number): v is string => typeof v === 'string' && v.trim() !== '' && [...v].length <= max;
+const flagOk = (v: unknown, allowed?: string[], maxValue = Infinity) =>
+  isObj(v) && text(v.why, OVERVIEW_LIMITS.why) && text(v.value, maxValue) && (!allowed || allowed.includes(v.value));
 
 function parseJson(text: string | undefined): unknown {
   try { return JSON.parse(text ?? ''); } catch { throw new Error('invalid model output: not JSON'); }
@@ -61,8 +67,8 @@ function safeLabel(v: unknown): string | null {
 
 export function validateOverview(v: unknown): OverviewFields {
   if (
-    !isObj(v) || typeof v.talk !== 'string' || !v.talk.trim() || typeof v.speaker !== 'string' || !v.speaker.trim() ||
-    !flagOk(v.abstract, ABSTRACT) || !flagOk(v.community) ||
+    !isObj(v) || !text(v.talk, OVERVIEW_LIMITS.summary) || !text(v.speaker, OVERVIEW_LIMITS.summary) ||
+    !flagOk(v.abstract, ABSTRACT) || !flagOk(v.community, undefined, OVERVIEW_LIMITS.community) ||
     !flagOk(v.speaking, SPEAKING) || !flagOk(v.student, STUDENT)
   ) throw new Error('invalid model output: overview failed validation');
   const f = v as unknown as OverviewFields;
@@ -102,7 +108,7 @@ export function vertexAiClient(opts: {
         contents: input,
         config: {
           systemInstruction: OVERVIEW_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: OVERVIEW_SCHEMA,
-          thinkingConfig, httpOptions,
+          maxOutputTokens: OVERVIEW_MAX_TOKENS, thinkingConfig, httpOptions,
         },
       });
       return { fields: validateOverview(parseJson(res.text)), model: opts.overviewModel };
@@ -133,7 +139,7 @@ export function vertexAiClient(opts: {
         contents: prompt,
         config: {
           systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA,
-          thinkingConfig, httpOptions,
+          maxOutputTokens: CLUSTER_MAX_TOKENS, thinkingConfig, httpOptions,
         },
       });
       const parsed = parseJson(res.text); // throws only if not JSON at all
