@@ -40,6 +40,36 @@ describe('planImport', () => {
     expect(p.counts).toMatchObject({ rematched: 1, hidden: 0, added: 0 });
     expect(p.markRemoved).toEqual([]);
   });
+  it('a re-match keeps the stored id and writes the new natural id as advocuKey', () => {
+    const p = planImport([inc('advocu-B', 'h1')], [st('advocu-A', 'h0', { advocuKey: 'advocu-A' })], []);
+    expect(p.upserts).toEqual([expect.objectContaining({ id: 'advocu-A', advocuKey: 'advocu-B' })]);
+  });
+  it('a doc re-matched once is matched by its advocuKey on the next import', () => {
+    const first = planImport([inc('advocu-B', 'h1')], [st('advocu-A', 'h0')], []);
+    const [written] = first.upserts;
+    const stored = st(written.id, written.contentHash, { advocuKey: written.advocuKey });
+    const p = planImport([inc('advocu-B', 'h1')], [stored], []);
+    expect(p.counts).toMatchObject({ rematched: 0, unchanged: 1, updated: 0, added: 0, hidden: 0 });
+    expect(p.upserts).toEqual([]);
+    expect(p.markRemoved).toEqual([]);
+  });
+  it('a re-matched doc whose title is then edited is updated under the stored id, not hidden and re-added', () => {
+    const stored = st('advocu-A', 'h1', { advocuKey: 'advocu-B' });
+    const p = planImport([inc('advocu-B', 'h2', 'a@example.com', 'Edited Talk')], [stored], []);
+    expect(p.upserts).toEqual([expect.objectContaining({ id: 'advocu-A', advocuKey: 'advocu-B', title: 'Edited Talk' })]);
+    expect(p.counts).toMatchObject({ rematched: 0, updated: 1, added: 0, hidden: 0 });
+    expect(p.markRemoved).toEqual([]);
+  });
+  it('a doc matched by advocuKey that was hidden is restored under the stored id', () => {
+    const stored = st('advocu-A', 'h1', { advocuKey: 'advocu-B', removedFromSheet: true });
+    const p = planImport([inc('advocu-B', 'h1')], [stored], []);
+    expect(p.upserts.map(s => s.id)).toEqual(['advocu-A']);
+    expect(p.counts).toMatchObject({ restored: 1, rematched: 0, added: 0 });
+  });
+  it('a stored doc without advocuKey still matches by id', () => {
+    const p = planImport([inc('advocu-1', 'h1')], [st('advocu-1', 'h1')], []);
+    expect(p.counts).toMatchObject({ unchanged: 1, rematched: 0, added: 0, hidden: 0 });
+  });
   it('does not re-match when two stored docs share speaker+title', () => {
     const p = planImport([inc('advocu-B', 'h1')], [st('advocu-A1', 'h0'), st('advocu-A2', 'h0')], []);
     expect(p.upserts.map(s => s.id)).toEqual(['advocu-B']);

@@ -19,7 +19,7 @@ export async function applyImport(
     const { applications, cfpTitles, rejected } = parseAdvocu(csv);
 
     const snap = await db.collection('submissions')
-      .select('source', 'contentHash', 'removedFromSheet', 'speakerKey', 'title').get();
+      .select('source', 'contentHash', 'removedFromSheet', 'speakerKey', 'title', 'advocuKey').get();
     const stored: StoredDoc[] = snap.docs.map(d => ({
       id: d.id,
       source: d.get('source') === 'advocu' ? 'advocu' : 'form',
@@ -27,6 +27,7 @@ export async function applyImport(
       removedFromSheet: d.get('removedFromSheet') === true,
       speakerKey: (d.get('speakerKey') as string | undefined) ?? '',
       title: (d.get('title') as string | undefined) ?? '',
+      advocuKey: d.get('advocuKey') as string | undefined,
     }));
     const plan = planImport(applications, stored, cfpTitles);
     const summary: ImportSummary = {

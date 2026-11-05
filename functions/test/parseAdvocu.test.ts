@@ -15,6 +15,7 @@ describe('parseAdvocu', () => {
       language: 'English', level: 'Beginner', phone: '', photoFileId: null, coSpeaker: null, noSession: false });
     expect(a.advocu).toMatchObject({ status: 'PENDING', languages: 'English, Arabic', levels: 'Beginner, Advance' });
     expect(a.contentHash).toMatch(/^[0-9a-f]{40}$/);
+    expect(a.advocuKey).toBe(a.id);
   });
   it('parses BOM, quoted commas and newlines', () => {
     const csv = '﻿' + fakeAdvocuCsv([{ Bio: 'Line one,\r\nline two' }]);

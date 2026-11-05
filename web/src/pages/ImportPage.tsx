@@ -10,6 +10,7 @@ function Counts({ s }: { s: ImportSummary }) {
   const items: [string, number][] = [
     ['New', s.added], ['Updated', s.updated], ['Unchanged', s.unchanged], ['Restored', s.restored],
     ['Hidden', s.hidden], ['Merged with Form talks', s.merged], ['Speakers', s.speakers],
+    ...(s.rematched > 0 ? [['Re-matched (date changed in Advocu)', s.rematched] as [string, number]] : []),
   ]
   return (
     <ul>

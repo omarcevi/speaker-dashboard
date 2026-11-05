@@ -32,6 +32,9 @@ export interface SubmissionData {
   // Both absent on Form documents synced before Advocu imports existed. Stored docs never hold advocu: null;
   // the web's Card (Submission & { advocu: AdvocuDetails | null }) needs null allowed here to stay a Submission.
   source?: Source; advocu?: AdvocuDetails | null;
+  // Advocu documents only: the application's current natural id (advocuId(email, creationIso)). Differs from `id` after
+  // a fallback re-match, so later imports still find the document by it.
+  advocuKey?: string;
 }
 export interface Submission extends SubmissionData { removedFromSheet: boolean; syncedAt: Ts }
 export interface Review { status: Status; updatedAt: Ts; updatedBy: string; updatedByName: string } // reviews/{submissionId}

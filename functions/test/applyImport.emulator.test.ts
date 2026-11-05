@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { applySync } from '../src/sync/applySync.js';
 import { applyImport } from '../src/advocu/applyImport.js';
-import { ImportRefused } from '../src/advocu/parseAdvocu.js';
+import { ImportRefused, advocuId } from '../src/advocu/parseAdvocu.js';
 import { fakeSheet } from '../src/testing/fakeRows.js';
 import { fakeAdvocuCsv, FAKE_ADVOCU_ROWS } from '../src/testing/fakeAdvocu.js';
 
@@ -39,7 +39,7 @@ describe('applyImport', () => {
     expect(r.mode).toBe('apply');
     const docs = await advocuDocs();
     expect(docs.length).toBe(FAKE_ADVOCU_ROWS.length);
-    docs.forEach(d => expect(d.data()).toMatchObject({ source: 'advocu', removedFromSheet: false }));
+    docs.forEach(d => expect(d.data()).toMatchObject({ source: 'advocu', removedFromSheet: false, advocuKey: d.id }));
     expect((await db.doc('meta/advocu').get()).data()).toMatchObject({
       total: FAKE_ADVOCU_ROWS.length, added: FAKE_ADVOCU_ROWS.length, byName: 'Adele', error: null,
     });
@@ -68,6 +68,24 @@ describe('applyImport', () => {
     await applyImport(db, fakeAdvocuCsv(), { apply: true, by });
     expect((await db.doc(`submissions/${id}`).get()).get('removedFromSheet')).toBe(false);
     expect(await snapshotOf(paths)).toEqual(before);
+  });
+
+  it('a re-matched application is found by its stored advocuKey on later imports', async () => {
+    await applyImport(db, fakeAdvocuCsv(), { apply: true, by });
+    const id = (await advocuDocs()).find(d => d.get('title') === 'Fake Cloud Talk')!.id;
+    // Advocu changes its date output for one row: a new natural id, same speaker and title.
+    const moved = '2026-10-03T10:00:00.001Z';
+    const rows = FAKE_ADVOCU_ROWS.map(r => (r['Proposal title'] === 'Fake Cloud Talk' ? { ...r, 'Creation date': moved } : r));
+    const first = await applyImport(db, fakeAdvocuCsv(rows), { apply: true, by });
+    expect(first).toMatchObject({ rematched: 1, updated: 1, added: 0, hidden: 0 });
+    expect((await db.doc(`submissions/${id}`).get()).get('advocuKey')).toBe(advocuId('grace@example.com', moved));
+    const again = await applyImport(db, fakeAdvocuCsv(rows), { apply: false, by });
+    expect(again).toMatchObject({ rematched: 0, updated: 0, unchanged: FAKE_ADVOCU_ROWS.length, added: 0, hidden: 0 });
+    const edited = rows.map(r => (r['Proposal title'] === 'Fake Cloud Talk' ? { ...r, 'Proposal title': 'Fake Cloud Talk, Revised' } : r));
+    const later = await applyImport(db, fakeAdvocuCsv(edited), { apply: true, by });
+    expect(later).toMatchObject({ rematched: 0, updated: 1, added: 0, hidden: 0 });
+    expect((await db.doc(`submissions/${id}`).get()).data()).toMatchObject({ title: 'Fake Cloud Talk, Revised', removedFromSheet: false });
+    expect((await advocuDocs()).length).toBe(FAKE_ADVOCU_ROWS.length);
   });
 
   it('merge count sees the fake form talk', async () => {

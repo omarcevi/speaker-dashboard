@@ -80,15 +80,15 @@ export function parseAdvocu(text: string): ParsedAdvocu {
         city: '', otherRequirements: '', tshirt: '', afterParty: '',
       },
       consent: { codeOfConduct: '', recording: '', personalData: '' },
-      source: 'advocu',
+      source: 'advocu', advocuKey: id,
       advocu: {
         creationDate: creationIso, status: get('Status'), eligible: get('Eligible'), country: get('Country'), city: get('City'),
         sessionTypes: get('Session type'), sessionLength: get('Session length'), participation: get('Participation type'),
         languages, levels, topics, cfpTitle,
       },
     };
-    // id and row are left out so the same answers hash the same wherever they sit, as in parseSheet.
-    const { id: _id, row: _row, ...content } = data;
+    // id, row and advocuKey are left out so the same answers hash the same wherever they sit, as in parseSheet.
+    const { id: _id, row: _row, advocuKey: _key, ...content } = data;
     applications.push({ ...data, contentHash: sha1(JSON.stringify(content)) });
   }
   return { applications, cfpTitles: [...cfpTitles], rejected };
