@@ -8,6 +8,8 @@ export const EMBED_MODEL = 'gemini-embedding-001';
 export const EMBED_DIMS = 768;
 /** Texts per embedContent request. Vertex gemini-embedding-001 accepts one input per request; raise only if that changes. */
 export const EMBED_BATCH = 1;
+/** Per-request deadline. The SDK aborts the request when it runs out, and the call rejects like any other failure. */
+export const AI_TIMEOUT_MS = 60_000;
 
 export type OverviewFields = Omit<AiOverview, 'model' | 'generatedAt'>;
 
@@ -23,12 +25,12 @@ export interface GenAiLike {
     generateContent(p: {
       model: string;
       contents: string;
-      config?: { systemInstruction?: string; responseMimeType?: string; responseJsonSchema?: unknown };
+      config?: { systemInstruction?: string; responseMimeType?: string; responseJsonSchema?: unknown; httpOptions?: { timeout?: number } };
     }): Promise<{ text?: string }>;
     embedContent(p: {
       model: string;
       contents: string[];
-      config?: { outputDimensionality?: number; taskType?: string };
+      config?: { outputDimensionality?: number; taskType?: string; httpOptions?: { timeout?: number } };
     }): Promise<{ embeddings?: { values?: number[] }[] }>;
   };
 }
@@ -70,15 +72,16 @@ export function validateOverview(v: unknown): OverviewFields {
 }
 
 export function vertexAiClient(opts: {
-  project: string; location: 'europe-west1'; overviewModel: string; embedModel: string; genai?: GenAiLike;
+  project: string; location: 'europe-west1'; overviewModel: string; embedModel: string; genai?: GenAiLike; timeoutMs?: number;
 }): AiClient {
   const genai: GenAiLike = opts.genai ?? (new GoogleGenAI({ vertexai: true, project: opts.project, location: opts.location }) as unknown as GenAiLike);
+  const httpOptions = { timeout: opts.timeoutMs ?? AI_TIMEOUT_MS };
   return {
     async overview(input) {
       const res = await genai.models.generateContent({
         model: opts.overviewModel,
         contents: input,
-        config: { systemInstruction: OVERVIEW_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: OVERVIEW_SCHEMA },
+        config: { systemInstruction: OVERVIEW_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: OVERVIEW_SCHEMA, httpOptions },
       });
       return { fields: validateOverview(parseJson(res.text)), model: opts.overviewModel };
     },
@@ -89,7 +92,7 @@ export function vertexAiClient(opts: {
         const res = await genai.models.embedContent({
           model: opts.embedModel,
           contents: chunk,
-          config: { outputDimensionality: EMBED_DIMS, taskType: 'SEMANTIC_SIMILARITY' },
+          config: { outputDimensionality: EMBED_DIMS, taskType: 'SEMANTIC_SIMILARITY', httpOptions },
         });
         const vecs = res.embeddings ?? [];
         if (vecs.length !== chunk.length || vecs.some((e) => !Array.isArray(e.values) || e.values.length !== EMBED_DIMS)) {
@@ -106,7 +109,7 @@ export function vertexAiClient(opts: {
       const res = await genai.models.generateContent({
         model: opts.overviewModel,
         contents: prompt,
-        config: { systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA },
+        config: { systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA, httpOptions },
       });
       const parsed = parseJson(res.text); // throws only if not JSON at all
       const entries = isObj(parsed) && Array.isArray(parsed.labels) ? parsed.labels : [];

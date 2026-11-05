@@ -49,6 +49,26 @@ describe('vertexAiClient', () => {
     expect(s.emb).toHaveLength(250);
     expect(s.emb.map((r) => r.contents)).toEqual(Array.from({ length: 250 }, (_, i) => [String(i)]));
   });
+  it('gives every Vertex request a 60 s timeout by default', async () => {
+    const s = stub(JSON.stringify(good));
+    const c = mk(s.genai);
+    await c.overview('x');
+    await c.embed(['a']);
+    await c.nameClusters([['a']]);
+    expect([...s.gen, ...s.emb].map((r) => r.config.httpOptions?.timeout)).toEqual([60_000, 60_000, 60_000]);
+  });
+  it('a timed-out request rejects instead of hanging', async () => {
+    // Like the SDK: the request is aborted when httpOptions.timeout runs out, and never answers otherwise.
+    const hang = (r: any) => new Promise<never>((_, reject) => {
+      const ms = r.config?.httpOptions?.timeout;
+      if (ms > 0) setTimeout(() => reject(new Error('This operation was aborted')), ms);
+    });
+    const genai: GenAiLike = { models: { generateContent: hang, embedContent: hang } };
+    const c = vertexAiClient({ project: 'p', location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL, genai, timeoutMs: 20 });
+    await expect(c.overview('x')).rejects.toThrow(/aborted/);
+    await expect(c.embed(['a'])).rejects.toThrow(/aborted/);
+    await expect(c.nameClusters([['a']])).rejects.toThrow(/aborted/);
+  }, 2000);
   it('invalid model output is rejected, not returned', async () => {
     const bad = { ...good, abstract: { value: 'excellent', why: 'w' } };
     await expect(mk(stub(JSON.stringify(bad)).genai).overview('x')).rejects.toThrow(/invalid/);

@@ -360,6 +360,20 @@ describe('refreshAi', () => {
     expect((await aiMeta()).error).toContain('invalid model output');
   });
 
+  it('a Vertex timeout is a normal per-document failure', async () => {
+    const n = (await corpus()).size;
+    const hang = (r: any) => new Promise<never>((_, reject) => {
+      const ms = r.config?.httpOptions?.timeout;
+      if (ms > 0) setTimeout(() => reject(new Error('This operation was aborted')), ms);
+    });
+    const genai: GenAiLike = { models: { generateContent: hang, embedContent: hang } };
+    const client = vertexAiClient({ project: 'demo-cfp', location: 'europe-west1', overviewModel: 'stub', embedModel: 'stub', genai, timeoutMs: 20 });
+    const r = await refreshAi(db, client);
+    expect(r).toMatchObject({ generated: 0, pending: n });
+    expect(r.failed).toHaveLength(n);
+    expect((await aiMeta()).error).toContain('aborted');
+  });
+
   it('cluster naming failure falls back to Group labels and is retried next run', async () => {
     const client = fakeAiClient();
     vi.spyOn(client, 'nameClusters').mockRejectedValueOnce(new Error('invalid model output: not JSON'));
