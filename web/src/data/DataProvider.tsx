@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
-import type { AdvocuMeta, Comment, Review, Score, Submission, SyncMeta } from '../../../functions/src/model.ts'
+import type { AdvocuMeta, AiDoc, AiMeta, Comment, Review, Score, Submission, SyncMeta, TopicMap } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { db } from '../firebase.ts'
 import { buildCards, type Card } from '../lib/cards.ts'
@@ -15,6 +15,9 @@ interface DataValue {
   comments: Map<string, CommentWithId[]>
   sync: SyncMeta | null
   advocuMeta: AdvocuMeta | null
+  ai: Map<string, AiDoc>
+  topicMap: TopicMap | null
+  aiMeta: AiMeta | null
   loading: boolean
   error: string | null
 }
@@ -28,6 +31,9 @@ const emptyLoaded: Loaded = {
   comments: new Map(),
   sync: null,
   advocuMeta: null,
+  ai: new Map(),
+  topicMap: null,
+  aiMeta: null,
   error: null,
 }
 
@@ -46,7 +52,7 @@ function groupBySubmission<T extends { submissionId: string }>(snap: QuerySnapsh
   return map
 }
 
-const SOURCES = 6
+const SOURCES = 9
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { me } = useAuth()
@@ -93,6 +99,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData((p) => ({ ...p, advocuMeta: snap.exists() ? (snap.data() as AdvocuMeta) : null }))
         markReady('advocu')
       }, fail('advocu')),
+      onSnapshot(collection(db, 'ai'), (snap) => {
+        const ai = new Map(snap.docs.map((d) => [d.id, d.data() as AiDoc]))
+        setData((p) => ({ ...p, ai }))
+        markReady('ai')
+      }, fail('ai')),
+      onSnapshot(doc(db, 'meta', 'topicMap'), (snap) => {
+        setData((p) => ({ ...p, topicMap: snap.exists() ? (snap.data() as TopicMap) : null }))
+        markReady('topicMap')
+      }, fail('topicMap')),
+      onSnapshot(doc(db, 'meta', 'ai'), (snap) => {
+        setData((p) => ({ ...p, aiMeta: snap.exists() ? (snap.data() as AiMeta) : null }))
+        markReady('aiMeta')
+      }, fail('aiMeta')),
     ]
     return () => {
       unsubs.forEach((u) => u())

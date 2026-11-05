@@ -4,6 +4,7 @@ import type { Comment } from '../../../functions/src/model.ts'
 import type { Actor } from '../data/actions.ts'
 import type { Card } from '../lib/cards.ts'
 import { versionWarning } from '../lib/versionWarning.ts'
+import OverviewBox from './OverviewBox.tsx'
 import AdvocuDetails from './AdvocuDetails.tsx'
 import SourceBadge from './SourceBadge.tsx'
 import Comments from './Comments.tsx'
@@ -51,6 +52,7 @@ export default function TalkPanel({ sub, status, comments, me, titleOf }: {
       </div>
       {warning && <p className="warning" role="status">{warning}</p>}
       <StatusHistory key={`history-${sub.id}`} submissionId={sub.id} />
+      <OverviewBox card={sub} />
       <h2 className="talk-title">{sub.title}</h2>
       <Section label="Abstract" text={sub.abstract} />
       {sub.advocu && <AdvocuDetails advocu={sub.advocu} sources={sub.sources} />}

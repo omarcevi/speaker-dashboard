@@ -15,3 +15,21 @@ export function saveShowAll(v: boolean) {
     // storage unavailable; the choice just won't persist
   }
 }
+
+const OVERVIEW_KEY = 'overviewOpen'
+
+export function loadOverviewOpen(): boolean {
+  try {
+    return localStorage.getItem(OVERVIEW_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function saveOverviewOpen(v: boolean) {
+  try {
+    localStorage.setItem(OVERVIEW_KEY, String(v))
+  } catch {
+    // storage unavailable; the choice just won't persist
+  }
+}
