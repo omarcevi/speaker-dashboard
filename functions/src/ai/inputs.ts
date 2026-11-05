@@ -1,7 +1,8 @@
 import type { SubmissionData } from '../model.js';
 
 // Escape rather than strip: with no `<` or `>` left in a value, no delimiter can form, whatever the nesting, case or spacing.
-const clean = (v: string | undefined | null) => (v ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
+export const escapeAngles = (v: string) => v.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const clean = (v: string | undefined | null) => escapeAngles(v ?? '').trim();
 
 function lines(pairs: [string, string | undefined | null][]): string {
   return pairs.map(([k, v]) => [k, clean(v)] as const).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join('\n');

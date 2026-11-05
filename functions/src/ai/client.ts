@@ -1,12 +1,13 @@
 import { GoogleGenAI } from '@google/genai';
 import type { AiOverview } from '../model';
-import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, CLUSTER_SYSTEM } from './prompt';
+import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt';
+import { escapeAngles } from './inputs';
 
 export const OVERVIEW_MODEL = 'gemini-2.5-flash';
 export const EMBED_MODEL = 'gemini-embedding-001';
 export const EMBED_DIMS = 768;
-/** Texts per embedContent request (conservative cap). */
-export const EMBED_BATCH = 100;
+/** Texts per embedContent request. Vertex gemini-embedding-001 accepts one input per request; raise only if that changes. */
+export const EMBED_BATCH = 1;
 
 export type OverviewFields = Omit<AiOverview, 'model' | 'generatedAt'>;
 
@@ -38,15 +39,23 @@ const STUDENT = ['yes', 'no', 'unclear'];
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const flagOk = (v: unknown, allowed?: string[]) =>
-  isObj(v) && typeof v.why === 'string' && typeof v.value === 'string' && (!allowed || allowed.includes(v.value));
+  isObj(v) && typeof v.why === 'string' && v.why.trim() !== '' && typeof v.value === 'string' && v.value.trim() !== '' && (!allowed || allowed.includes(v.value));
 
 function parseJson(text: string | undefined): unknown {
   try { return JSON.parse(text ?? ''); } catch { throw new Error('invalid model output: not JSON'); }
 }
 
+const LABEL_RE = /^[\p{L}\p{N} &\/\-,.']+$/u;
+function safeLabel(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  const words = t.split(/ +/).length;
+  return t.length >= 1 && t.length <= 40 && words <= 5 && LABEL_RE.test(t) ? t : null;
+}
+
 export function validateOverview(v: unknown): OverviewFields {
   if (
-    !isObj(v) || typeof v.talk !== 'string' || typeof v.speaker !== 'string' ||
+    !isObj(v) || typeof v.talk !== 'string' || !v.talk.trim() || typeof v.speaker !== 'string' || !v.speaker.trim() ||
     !flagOk(v.abstract, ABSTRACT) || !flagOk(v.community) ||
     !flagOk(v.speaking, SPEAKING) || !flagOk(v.student, STUDENT)
   ) throw new Error('invalid model output: overview failed validation');
@@ -83,7 +92,7 @@ export function vertexAiClient(opts: {
           config: { outputDimensionality: EMBED_DIMS, taskType: 'SEMANTIC_SIMILARITY' },
         });
         const vecs = res.embeddings ?? [];
-        if (vecs.length !== chunk.length || vecs.some((e) => !Array.isArray(e.values) || e.values.length === 0)) {
+        if (vecs.length !== chunk.length || vecs.some((e) => !Array.isArray(e.values) || e.values.length !== EMBED_DIMS)) {
           throw new Error('invalid embedding response');
         }
         for (const e of vecs) out.push(e.values as number[]);
@@ -91,24 +100,25 @@ export function vertexAiClient(opts: {
       return out;
     },
     async nameClusters(groups) {
-      const prompt = groups.map((g, id) => `Group ${id}:\n${g.map((t) => `- ${t}`).join('\n')}`).join('\n\n');
+      const prompt = groups
+        .map((g, id) => `Group ${id}:\n${g.map((t) => `<title>${escapeAngles(t).replace(/\s*[\r\n]+\s*/g, ' ')}</title>`).join('\n')}`)
+        .join('\n\n');
       const res = await genai.models.generateContent({
         model: opts.overviewModel,
         contents: prompt,
-        config: { systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json' },
+        config: { systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA },
       });
-      const parsed = parseJson(res.text);
-      const labels = isObj(parsed) && Array.isArray(parsed.labels) ? parsed.labels : null;
-      if (!labels) throw new Error('invalid model output: no labels');
-      const byId = new Map<number, string>();
-      for (const l of labels) {
-        if (isObj(l) && typeof l.id === 'number' && typeof l.label === 'string' && l.label.trim()) byId.set(l.id, l.label.trim());
+      const parsed = parseJson(res.text); // throws only if not JSON at all
+      const entries = isObj(parsed) && Array.isArray(parsed.labels) ? parsed.labels : [];
+      const byId = new Map<number, string | null>();
+      for (const l of entries) {
+        if (!isObj(l) || !Number.isInteger(l.id)) continue;
+        const id = l.id as number;
+        if (id < 0 || id >= groups.length) continue;
+        if (byId.has(id)) { byId.set(id, null); continue; } // duplicate id: distrust both
+        byId.set(id, safeLabel(l.label));
       }
-      return groups.map((_, id) => {
-        const label = byId.get(id);
-        if (!label) throw new Error('invalid model output: missing label');
-        return label;
-      });
+      return groups.map((_, id) => byId.get(id) ?? `Group ${id + 1}`);
     },
   };
 }
