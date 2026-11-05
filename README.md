@@ -43,7 +43,7 @@ Then run each of these in its own terminal:
 npm run build --prefix functions
 npx firebase emulators:start --only auth,firestore,functions,storage --project demo-cfp
 
-# 2. Seed: 12 fake submissions, 3 users and fake AI results
+# 2. Seed: 12 fake Form rows, 3 fake Advocu applications, 3 users and fake AI results
 cd functions && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npx tsx scripts/seed-emulator.ts
 
 # 3. Web app at http://localhost:5173
@@ -94,9 +94,10 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      ```
    - `web/.env.production`: copy the `VITE_FIREBASE_*` values from Firebase console → Project settings → Your apps → Web app (create a web app there if there isn't one), and set `VITE_USE_EMULATORS=false`.
 6. **AI assist (Vertex AI).**
+   - Where it runs: overviews and topic names use Gemini 3.8 Flash on the Vertex AI **EU multi-region**, and embeddings use `gemini-embedding-001` in **europe-west1**. Everything stays inside the EU.
    - Enable the Vertex AI API: `gcloud services enable aiplatform.googleapis.com --project speaker-dashboard-9c149`.
    - Grant `cfp-sync` the role `roles/aiplatform.user`.
-   - **Check:** the CFP's personal-data consent must cover AI-assisted review, with processing in the EU. The current form's wording "to review your submission" was judged to cover it. Consider adding an AI-transparency line to next year's form.
+   - **Check:** confirm that the CFP's personal-data consent covers AI-assisted review with processing in the EU. The current form asks for consent "to review your submission". Consider adding an AI-transparency line to next year's form.
 7. **Deploy:**
    ```bash
    npx firebase login
@@ -123,7 +124,7 @@ Three features help reviewers get through the talks faster:
 
 The overview is based only on what the speaker wrote, and AI never decides anything. Scores, comments and Approve / Maybe / Decline stay with the team.
 
-**Privacy.** The AI runs on Vertex AI in `europe-west1`, inside the same Google Cloud project. Only the talk text and the speaker's bio, experience, company and job title are sent (plus country, city, session type and participation for Advocu applications). Names, emails, phones, links, photos, logistics and consent are never sent.
+**Privacy.** Overviews and topic names use Gemini 3.8 Flash on the Vertex AI **EU multi-region**, and embeddings use `gemini-embedding-001` in **europe-west1**. Everything stays inside the EU, in the same Google Cloud project. Only the talk text and the speaker's bio, experience, company and job title are sent (plus country, city, session type and participation for Advocu applications). Names, emails, phones, links, photos, logistics and consent are never sent.
 
 **Refresh.** New and edited talks get overviews every 15 minutes. The first full run can take up to about 30 minutes.
 
