@@ -4,7 +4,10 @@ import { submittedAtMs } from './time.ts'
 
 // One reviewable talk: a group of documents (Form and/or Advocu) with the same speaker and title.
 // `id` is the primary document's id, so reviews, scores and comments keyed by it keep working.
-export type Card = Submission & { sources: Source[]; memberIds: string[]; advocu: AdvocuDetails | null; possibleDuplicateOf: string[] }
+// `displayId` is the document whose content the card shows (differs from `id` when the reviewed version was removed).
+export type Card = Submission & {
+  sources: Source[]; memberIds: string[]; advocu: AdvocuDetails | null; possibleDuplicateOf: string[]; displayId: string
+}
 
 const SOURCE_ORDER: Source[] = ['form', 'advocu']
 const sourceOf = (s: Submission): Source => s.source ?? 'form'
@@ -15,7 +18,7 @@ const byTime = (a: Submission, b: Submission) => (submittedAtMs(a) ?? 0) - (subm
 const latestPresent = (sorted: Submission[]) => sorted.filter((s) => !s.removedFromSheet).at(-1)
 
 function single(sub: Submission, possibleDuplicateOf: string[]): Card {
-  return { ...sub, sources: [sourceOf(sub)], memberIds: [sub.id], advocu: sub.advocu ?? null, possibleDuplicateOf }
+  return { ...sub, sources: [sourceOf(sub)], memberIds: [sub.id], advocu: sub.advocu ?? null, possibleDuplicateOf, displayId: sub.id }
 }
 
 function groupCards(members: Submission[], hasReviewData: (id: string) => boolean): Card[] {
@@ -27,11 +30,14 @@ function groupCards(members: Submission[], hasReviewData: (id: string) => boolea
   const forms = members.filter((m) => sourceOf(m) === 'form').sort(byRow)
   const advocus = members.filter((m) => sourceOf(m) === 'advocu').sort(byTime)
   const primary = reviewed[0] ?? forms.at(-1) ?? advocus[0]
-  const display = latestPresent(forms) ?? latestPresent(advocus) ?? primary
+  // A reviewed version is never silently replaced: Form emails aren't verified, so anyone could add a same-titled doc.
+  const reviewedPresent = reviewed[0] && !reviewed[0].removedFromSheet ? reviewed[0] : undefined
+  const display = reviewedPresent ?? latestPresent(forms) ?? latestPresent(advocus) ?? primary
   const advocuDoc = sourceOf(primary) === 'advocu' ? primary : advocus.at(-1)
   return [{
     ...display,
     id: primary.id,
+    displayId: display.id,
     removedFromSheet: members.every((m) => m.removedFromSheet),
     sources: SOURCE_ORDER.filter((src) => members.some((m) => sourceOf(m) === src)),
     memberIds: members.map((m) => m.id),

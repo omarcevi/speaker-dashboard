@@ -23,38 +23,57 @@ describe('buildCards', () => {
     const cards = buildCards([advocuDoc, formDoc], none)
     expect(cards).toHaveLength(1)
     expect(cards[0]).toMatchObject({
-      id: 'row-2', sources: ['form', 'advocu'], advocu: advocuDoc.advocu, possibleDuplicateOf: [],
+      id: 'row-2', displayId: 'row-2', sources: ['form', 'advocu'], advocu: advocuDoc.advocu, possibleDuplicateOf: [],
       title: 'Building Agents', abstract: 'Form abstract', photoUrl: 'https://example.com/ada.jpg', removedFromSheet: false,
     })
     expect([...cards[0].memberIds].sort()).toEqual(['advocu-a', 'row-2'])
   })
 
-  it('a reviewed advocu doc is primary but shows form content', () => {
+  it('a reviewed present advocu primary shows its own content, not the newer form version', () => {
     const cards = buildCards([formDoc, advocuDoc], only('advocu-a'))
     expect(cards).toHaveLength(1)
     expect(cards[0]).toMatchObject({
-      id: 'advocu-a', sources: ['form', 'advocu'], advocu: advocuDoc.advocu,
-      title: 'Building Agents', abstract: 'Form abstract', photoUrl: 'https://example.com/ada.jpg',
+      id: 'advocu-a', displayId: 'advocu-a', sources: ['form', 'advocu'], advocu: advocuDoc.advocu,
+      title: 'Building agents!', abstract: 'Advocu abstract', photoUrl: '',
     })
+    expect([...cards[0].memberIds].sort()).toEqual(['advocu-a', 'row-2'])
+  })
+
+  it('a reviewed present form primary shows its own content, not a newer form row', () => {
+    const newer = form('row-7', 7, { abstract: 'Unreviewed newer abstract' })
+    const cards = buildCards([formDoc, newer], only('row-2'))
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({ id: 'row-2', displayId: 'row-2', abstract: 'Form abstract' })
   })
 
   it('two reviewed docs stay separate and point at each other', () => {
     const cards = buildCards([formDoc, advocuDoc], only('row-2', 'advocu-a'))
     expect(cards).toHaveLength(2)
     expect(cardFor(cards, 'row-2')).toMatchObject({
-      id: 'row-2', sources: ['form'], memberIds: ['row-2'], advocu: null, possibleDuplicateOf: ['advocu-a'],
+      id: 'row-2', displayId: 'row-2', sources: ['form'], memberIds: ['row-2'], advocu: null, possibleDuplicateOf: ['advocu-a'],
     })
     expect(cardFor(cards, 'advocu-a')).toMatchObject({
-      id: 'advocu-a', sources: ['advocu'], memberIds: ['advocu-a'], advocu: advocuDoc.advocu,
+      id: 'advocu-a', displayId: 'advocu-a', sources: ['advocu'], memberIds: ['advocu-a'], advocu: advocuDoc.advocu,
       abstract: 'Advocu abstract', possibleDuplicateOf: ['row-2'],
     })
   })
 
-  it('a removed reviewed doc keeps its decision on the live card', () => {
+  it('a removed reviewed primary keeps its decision and shows the present form version', () => {
     const removedAdvocu = { ...advocuDoc, removedFromSheet: true }
     const cards = buildCards([removedAdvocu, formDoc], only('advocu-a'))
     expect(cards).toHaveLength(1)
-    expect(cards[0]).toMatchObject({ id: 'advocu-a', removedFromSheet: false, title: 'Building Agents', abstract: 'Form abstract' })
+    expect(cards[0]).toMatchObject({
+      id: 'advocu-a', displayId: 'row-2', removedFromSheet: false,
+      title: 'Building Agents', abstract: 'Form abstract', photoUrl: 'https://example.com/ada.jpg',
+    })
+  })
+
+  it('an unreviewed group shows the latest present form content', () => {
+    // row-7 is the latest form row, so it is the primary, but it is removed: content comes from row-2, not advocu.
+    const removedLatest = form('row-7', 7, { abstract: 'Removed abstract', removedFromSheet: true })
+    const cards = buildCards([advocuDoc, removedLatest, formDoc], none)
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({ id: 'row-7', displayId: 'row-2', removedFromSheet: false, abstract: 'Form abstract' })
   })
 
   it('a group with every member removed is one removed card', () => {
