@@ -82,9 +82,7 @@ You do these steps once, in the Firebase and Google Cloud consoles.
    - In Authentication → Sign-in method, enable the **Google** provider.
 2. **APIs.** In Google Cloud console → APIs & Services, enable the **Google Sheets API** and the **Google Drive API**.
 3. **Service account.** Create a service account named `cfp-sync`. Grant it `roles/datastore.user` and `roles/storage.objectAdmin`. Give whoever runs `firebase deploy` the role `roles/iam.serviceAccountUser` on that account, so the functions can run as it. No key files are needed, so never download one.
-4. **Share with the service account.** Share these with `cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com` as **Viewer**:
-   - the response sheet
-   - the Drive folder where the Form stores uploaded photos
+4. **Share with the service account.** Share the response sheet with `cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com` as **Viewer**. Nothing else needs sharing. Profile photos are links in the sheet: Google Drive files shared as "Anyone with the link" get copied, and any others show an "Open photo ↗" link.
 
    **Never use "Publish to web"** on the sheet. It holds personal data.
 5. **Config files.** Git ignores both.
@@ -110,6 +108,15 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      ```
    - No CLI? In the Firebase console, go to Firestore → `users` → your document and set `role` to `admin`.
    - Reload the page. From then on, approve everyone else from the **Team** page.
+
+## Advocu applications
+
+Some speakers apply through Advocu instead of the Form. An admin imports those by hand.
+
+1. In Advocu, export the applications as CSV.
+2. Sign in as an admin and open the **Import** page. Upload the CSV and check the preview, especially the hidden count.
+3. Press the confirm button to import.
+4. **Never commit or share the export.** It holds personal data.
 
 ## Team rules
 

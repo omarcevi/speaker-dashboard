@@ -4,6 +4,7 @@ import { gate } from './auth/gate.ts'
 import { DataProvider } from './data/DataProvider.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
 import Nav from './components/Nav.tsx'
+import ImportPage from './pages/ImportPage.tsx'
 import ListPage from './pages/ListPage.tsx'
 import LogisticsPage from './pages/LogisticsPage.tsx'
 import MeetingPage from './pages/MeetingPage.tsx'
@@ -36,6 +37,7 @@ function Shell() {
           <Route path="/talk/:id" element={<MeetingPage />} />
           <Route path="/logistics" element={<LogisticsPage />} />
           <Route path="/team" element={me?.role === 'admin' ? <TeamPage /> : <Navigate to="/" replace />} />
+          <Route path="/import" element={me?.role === 'admin' ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

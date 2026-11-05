@@ -11,6 +11,7 @@ export default function Nav() {
       <NavLink to="/" end>Submissions</NavLink>
       <NavLink to="/logistics">Logistics</NavLink>
       {me?.role === 'admin' && <NavLink to="/team">Team</NavLink>}
+      {me?.role === 'admin' && <NavLink to="/import">Import</NavLink>}
       <span className="spacer" />
       <span className="who">{me?.name}</span>
       <button onClick={() => void signOut()}>Sign out</button>
