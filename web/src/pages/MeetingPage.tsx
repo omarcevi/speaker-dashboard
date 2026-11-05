@@ -10,6 +10,7 @@ import StatusCounts from '../components/StatusCounts.tsx'
 import TalkPanel from '../components/TalkPanel.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { approvedBalance } from '../lib/balance.ts'
+import { cardFor } from '../lib/cards.ts'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery } from '../lib/listView.ts'
 import { loadShowAll } from '../lib/prefs.ts'
 import { neighbors } from '../lib/sequence.ts'
@@ -19,7 +20,7 @@ import { statusCounts, statusOf } from '../lib/status.ts'
 export default function MeetingPage() {
   const { id = '' } = useParams()
   const { me } = useAuth()
-  const { submissions, reviews, scores, comments, loading } = useData()
+  const { cards, reviews, scores, comments, loading } = useData()
   const [params, setParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -35,7 +36,7 @@ export default function MeetingPage() {
   // never on live data changes (a talk decided mid-meeting must not reshuffle the sequence).
   const order = useMemo(() => {
     if (loading) return []
-    const rows = buildRows(submissions, reviews, scores, comments, me?.uid ?? '', showAll)
+    const rows = buildRows(cards, reviews, scores, comments, me?.uid ?? '', showAll)
     return sortRows(applyFilter(rows, { ...filter, status: 'all' }), sort).map((r) => r.sub.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, loading])
@@ -55,15 +56,20 @@ export default function MeetingPage() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const counts = useMemo(() => statusCounts(submissions, reviews), [submissions, reviews])
-  const balance = useMemo(() => approvedBalance(submissions, reviews), [submissions, reviews])
+  const counts = useMemo(() => statusCounts(cards, reviews), [cards, reviews])
+  const balance = useMemo(() => approvedBalance(cards, reviews), [cards, reviews])
 
   const backTo = `/${query ? `?${query}` : ''}`
-  const sub = submissions.find((s) => s.id === id)
-  const visible = sub && (!sub.removedFromSheet || filter.showRemoved)
+  // A link to a document that has merged into another card (or whose group changed primary) opens that card.
+  const card = cardFor(cards, id)
+  const cardId = card?.id
+  useEffect(() => {
+    if (cardId !== undefined && cardId !== id) navigate(`/talk/${cardId}${query ? `?${query}` : ''}`, { replace: true })
+  }, [cardId, id, query, navigate])
+  const visible = card && (!card.removedFromSheet || filter.showRemoved)
 
   if (loading) return <div className="meeting"><p>Loading…</p></div>
-  if (!sub || !visible) {
+  if (!card || !visible) {
     return (
       <div className="meeting">
         <p><Link to={backTo}>← List</Link></p>
@@ -92,12 +98,12 @@ export default function MeetingPage() {
       </div>
       <BalanceRow balance={balance} />
       <div className="meeting-cols">
-        <TalkPanel sub={sub} status={statusOf(reviews, sub.id)} comments={comments.get(sub.id) ?? []} me={actor} />
-        <SpeakerPanel sub={sub} others={otherTalks(submissions, sub)} reviews={reviews} query={query} />
+        <TalkPanel sub={card} status={statusOf(reviews, card.id)} comments={comments.get(card.id) ?? []} me={actor} />
+        <SpeakerPanel sub={card} others={otherTalks(cards, card)} reviews={reviews} query={query} />
       </div>
       <div className="meeting-bottom">
-        <ScoreBar key={`score-${sub.id}`} submissionId={sub.id} scores={scores.get(sub.id) ?? []} me={actor} showAll={showAll} />
-        {me?.role === 'admin' && <DecisionBar key={`decision-${sub.id}`} submissionId={sub.id} status={statusOf(reviews, sub.id)} me={actor} />}
+        <ScoreBar key={`score-${card.id}`} submissionId={card.id} scores={scores.get(card.id) ?? []} me={actor} showAll={showAll} />
+        {me?.role === 'admin' && <DecisionBar key={`decision-${card.id}`} submissionId={card.id} status={statusOf(reviews, card.id)} me={actor} />}
       </div>
     </div>
   )

@@ -29,7 +29,9 @@ export interface SubmissionData {
   coSpeaker: CoSpeaker | null; logistics: Logistics;
   consent: { codeOfConduct: string; recording: string; personalData: string }; // '' = not answered
   contentHash: string;
-  source?: Source; advocu?: AdvocuDetails; // absent on Form documents synced before Advocu imports existed
+  // Both absent on Form documents synced before Advocu imports existed. Stored docs never hold advocu: null;
+  // the web's Card (Submission & { advocu: AdvocuDetails | null }) needs null allowed here to stay a Submission.
+  source?: Source; advocu?: AdvocuDetails | null;
 }
 export interface Submission extends SubmissionData { removedFromSheet: boolean; syncedAt: Ts }
 export interface Review { status: Status; updatedAt: Ts; updatedBy: string; updatedByName: string } // reviews/{submissionId}

@@ -1,4 +1,12 @@
-import type { Review, Score, Status, Submission } from '../../../functions/src/model.ts'
+import type { AdvocuDetails, Review, Score, Status, Submission } from '../../../functions/src/model.ts'
+
+export function fakeAdvocuDetails(over: Partial<AdvocuDetails> = {}): AdvocuDetails {
+  return {
+    creationDate: '', status: 'PENDING', eligible: '', country: 'Turkey', city: 'Istanbul', sessionTypes: 'Talk',
+    sessionLength: '30 min', participation: 'In-person', languages: 'English', levels: 'Beginner', topics: 'Web', cfpTitle: 'DevFest',
+    ...over,
+  }
+}
 
 export function fakeSub(over: Partial<Submission> & { id: string; row: number }): Submission {
   return {

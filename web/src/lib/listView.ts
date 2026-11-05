@@ -1,9 +1,10 @@
 import { STATUSES, type Review, type Score, type Status, type Submission } from '../../../functions/src/model.ts'
 import { summarizeScores, type ScoreSummary } from './scores.ts'
 import { statusOf } from './status.ts'
+import { compareSubmitted } from './time.ts'
 
-export interface ListRow {
-  sub: Submission
+export interface ListRow<T extends Submission = Submission> {
+  sub: T
   status: Status
   score: ScoreSummary
   commentCount: number
@@ -25,14 +26,14 @@ export function searchKey(s: string): string {
   return s.toLocaleLowerCase('tr').normalize('NFD').replace(/\p{M}/gu, '').replace(/ı/g, 'i')
 }
 
-export function buildRows(
-  subs: Submission[],
+export function buildRows<T extends Submission>(
+  subs: T[],
   reviews: Map<string, Review>,
   scores: Map<string, Score[]>,
   comments: Map<string, unknown[]>,
   myUid: string,
   showAll: boolean,
-): ListRow[] {
+): ListRow<T>[] {
   const perSpeaker = new Map<string, number>()
   for (const s of subs) {
     if (!s.removedFromSheet) perSpeaker.set(s.speakerKey, (perSpeaker.get(s.speakerKey) ?? 0) + 1)
@@ -46,7 +47,7 @@ export function buildRows(
   }))
 }
 
-export function applyFilter(rows: ListRow[], f: ListFilter): ListRow[] {
+export function applyFilter<T extends Submission>(rows: ListRow<T>[], f: ListFilter): ListRow<T>[] {
   const q = searchKey(f.q.trim())
   return rows.filter(({ sub, status }) => {
     if (sub.removedFromSheet && !f.showRemoved) return false
@@ -59,18 +60,18 @@ export function applyFilter(rows: ListRow[], f: ListFilter): ListRow[] {
   })
 }
 
-export function sortRows(rows: ListRow[], key: SortKey): ListRow[] {
-  const byRow = (a: ListRow, b: ListRow) => a.sub.row - b.sub.row
-  if (key === 'date') return [...rows].sort(byRow)
-  const metric = (r: ListRow): number | null =>
+export function sortRows<T extends Submission>(rows: ListRow<T>[], key: SortKey): ListRow<T>[] {
+  const byDate = (a: ListRow<T>, b: ListRow<T>) => compareSubmitted(a.sub, b.sub)
+  if (key === 'date') return [...rows].sort(byDate)
+  const metric = (r: ListRow<T>): number | null =>
     r.score.avg === null ? null : key === 'score' ? r.score.avg : (r.score.max ?? 0) - (r.score.min ?? 0)
   return [...rows].sort((a, b) => {
     const ma = metric(a)
     const mb = metric(b)
-    if (ma !== null && mb !== null) return mb - ma || byRow(a, b)
+    if (ma !== null && mb !== null) return mb - ma || byDate(a, b)
     if (ma !== null) return -1
     if (mb !== null) return 1
-    return byRow(a, b)
+    return byDate(a, b)
   })
 }
 

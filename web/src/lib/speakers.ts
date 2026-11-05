@@ -1,7 +1,8 @@
-import type { Submission } from '../../../functions/src/model.ts'
+import type { Card } from './cards.ts'
+import { compareSubmitted } from './time.ts'
 
-export function otherTalks(subs: Submission[], current: Submission): Submission[] {
-  return subs
-    .filter((s) => s.speakerKey === current.speakerKey && s.id !== current.id && !s.removedFromSheet)
-    .sort((a, b) => a.row - b.row)
+export function otherTalks(cards: Card[], current: Card): Card[] {
+  return cards
+    .filter((c) => c.speakerKey === current.speakerKey && c.id !== current.id && !c.removedFromSheet)
+    .sort(compareSubmitted)
 }

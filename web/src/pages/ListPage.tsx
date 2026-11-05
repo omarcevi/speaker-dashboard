@@ -17,7 +17,7 @@ const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1))
 
 export default function ListPage() {
   const { me } = useAuth()
-  const { submissions, reviews, scores, comments, loading } = useData()
+  const { cards, reviews, scores, comments, loading } = useData()
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const [showAll, setShowAll] = useState(loadShowAll)
@@ -28,13 +28,13 @@ export default function ListPage() {
     setParams(writeQuery({ ...filter, ...patch }, nextSort), { replace: true })
 
   const rows = useMemo(
-    () => buildRows(submissions, reviews, scores, comments, me?.uid ?? '', showAll),
-    [submissions, reviews, scores, comments, me?.uid, showAll],
+    () => buildRows(cards, reviews, scores, comments, me?.uid ?? '', showAll),
+    [cards, reviews, scores, comments, me?.uid, showAll],
   )
   const visible = useMemo(() => sortRows(applyFilter(rows, filter), sort), [rows, filter, sort])
-  const counts = useMemo(() => statusCounts(submissions, reviews), [submissions, reviews])
+  const counts = useMemo(() => statusCounts(cards, reviews), [cards, reviews])
 
-  const live = submissions.filter((s) => !s.removedFromSheet)
+  const live = cards.filter((c) => !c.removedFromSheet)
   const topics = distinct(live.map((s) => s.topicGroup))
   const levels = distinct(live.map((s) => s.level))
   const languages = distinct(live.map((s) => s.language))
