@@ -14,8 +14,8 @@ function exportCsv(csv: string) {
 }
 
 export default function LogisticsPage() {
-  const { submissions, reviews } = useData()
-  const rows = useMemo(() => logisticsRows(submissions, reviews), [submissions, reviews])
+  const { cards, submissions, reviews } = useData()
+  const rows = useMemo(() => logisticsRows(cards, submissions, reviews), [cards, submissions, reviews])
 
   return (
     <div>
@@ -28,7 +28,7 @@ export default function LogisticsPage() {
           <table className="list-table">
             <thead>
               <tr>
-                <th>Name</th><th>Email</th><th>Phone</th><th>Talks</th><th>From abroad</th><th>Coming from</th>
+                <th>Name</th><th>Email</th><th>Phone</th><th>Talks</th><th>Form answers</th><th>From abroad</th><th>Coming from</th>
                 <th>Outside Istanbul</th><th>City</th><th>Transport</th><th>Accommodation</th><th>Tour</th>
                 <th>After party</th><th>T-shirt</th><th>Other requirements</th><th>Anything else</th>
               </tr>
@@ -37,7 +37,9 @@ export default function LogisticsPage() {
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td>{r.name}{r.kind === 'co-speaker' && <span className="tag">Co-speaker</span>}</td>
-                  <td>{r.email}</td><td>{r.phone}</td><td>{r.talks}</td><td>{r.fromAbroad}</td><td>{r.abroadFrom}</td>
+                  <td>{r.email}</td><td>{r.phone}</td><td>{r.talks}</td>
+                  <td>{r.hasFormAnswers === null ? '' : r.hasFormAnswers ? 'Yes' : <span className="tag">No Form answers yet</span>}</td>
+                  <td>{r.fromAbroad}</td><td>{r.abroadFrom}</td>
                   <td>{r.outsideIstanbul}</td><td>{r.city}</td><td>{r.transport}</td><td>{r.accommodation}</td><td>{r.tour}</td>
                   <td>{r.afterParty}</td><td>{r.tshirt}</td><td>{r.otherRequirements}</td><td>{r.anythingElse}</td>
                 </tr>

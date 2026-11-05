@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { STATUSES } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import RefreshButton from '../components/RefreshButton.tsx'
+import SourceBadge from '../components/SourceBadge.tsx'
 import StatusChip, { statusLabel } from '../components/StatusChip.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery, type ListFilter, type SortKey } from '../lib/listView.ts'
@@ -115,6 +116,7 @@ export default function ListPage() {
                 <td><StatusChip status={r.status} /></td>
                 <td>
                   {r.sub.title}
+                  <SourceBadge sources={r.sub.sources} />
                   {r.sub.noSession && <span className="tag">No session</span>}
                   {r.sub.removedFromSheet && <span className="tag">Removed</span>}
                 </td>
