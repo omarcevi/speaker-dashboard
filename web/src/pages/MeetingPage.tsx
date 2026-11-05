@@ -64,8 +64,9 @@ export default function MeetingPage() {
   const card = cardFor(cards, id)
   const cardId = card?.id
   useEffect(() => {
-    if (cardId !== undefined && cardId !== id) navigate(`/talk/${cardId}${query ? `?${query}` : ''}`, { replace: true })
-  }, [cardId, id, query, navigate])
+    // Only on complete data: before reviews/scores/comments load, a group's primary may not be the final one.
+    if (!loading && cardId !== undefined && cardId !== id) navigate(`/talk/${cardId}${query ? `?${query}` : ''}`, { replace: true })
+  }, [loading, cardId, id, query, navigate])
   const visible = card && (!card.removedFromSheet || filter.showRemoved)
 
   if (loading) return <div className="meeting"><p>Loading…</p></div>

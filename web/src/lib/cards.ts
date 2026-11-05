@@ -4,7 +4,7 @@ import { submittedAtMs } from './time.ts'
 
 // One reviewable talk: a group of documents (Form and/or Advocu) with the same speaker and title.
 // `id` is the primary document's id, so reviews, scores and comments keyed by it keep working.
-// `displayId` is the document whose content the card shows (differs from `id` when the reviewed version was removed).
+// `displayId` is the document whose content the card shows (differs from `id` only when the primary was removed).
 export type Card = Submission & {
   sources: Source[]; memberIds: string[]; advocu: AdvocuDetails | null; possibleDuplicateOf: string[]; displayId: string
 }
@@ -24,16 +24,22 @@ function single(sub: Submission, possibleDuplicateOf: string[]): Card {
 function groupCards(members: Submission[], hasReviewData: (id: string) => boolean): Card[] {
   const reviewed = members.filter((m) => hasReviewData(m.id))
   // Two or more reviewed docs: merging would hide a decision, score or comment, so each stays its own card.
+  // Each links only to the other members still present; a removed one behaves like any removed row.
   if (reviewed.length >= 2) {
-    return members.map((m) => single(m, members.filter((o) => o !== m).map((o) => o.id)))
+    return members.map((m) => single(m, members.filter((o) => o !== m && !o.removedFromSheet).map((o) => o.id)))
   }
   const forms = members.filter((m) => sourceOf(m) === 'form').sort(byRow)
   const advocus = members.filter((m) => sourceOf(m) === 'advocu').sort(byTime)
-  const primary = reviewed[0] ?? forms.at(-1) ?? advocus[0]
-  // A reviewed version is never silently replaced: Form emails aren't verified, so anyone could add a same-titled doc.
-  const reviewedPresent = reviewed[0] && !reviewed[0].removedFromSheet ? reviewed[0] : undefined
-  const display = reviewedPresent ?? latestPresent(forms) ?? latestPresent(advocus) ?? primary
-  const advocuDoc = sourceOf(primary) === 'advocu' ? primary : advocus.at(-1)
+  const presentForm = latestPresent(forms)
+  const presentAdvocu = latestPresent(advocus)
+  // Primary: the reviewed doc (even if removed), else the latest present Form doc, then Advocu doc; if every member
+  // is removed, the latest Form doc, then Advocu doc. Picking from present docs means an unreviewed card shows its
+  // primary, so its content doesn't change when someone scores it, and review data never lands on a hidden doc.
+  const primary = reviewed[0] ?? presentForm ?? presentAdvocu ?? forms.at(-1) ?? advocus[advocus.length - 1]
+  // A present primary is never replaced by another version: Form emails aren't verified, so anyone could add a
+  // same-titled doc. Only a removed primary falls back to a present version.
+  const display = primary.removedFromSheet ? presentForm ?? presentAdvocu ?? primary : primary
+  const advocuDoc = sourceOf(primary) === 'advocu' ? primary : presentAdvocu ?? advocus.at(-1)
   return [{
     ...display,
     id: primary.id,

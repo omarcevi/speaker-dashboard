@@ -68,18 +68,43 @@ describe('buildCards', () => {
     })
   })
 
-  it('an unreviewed group shows the latest present form content', () => {
-    // row-7 is the latest form row, so it is the primary, but it is removed: content comes from row-2, not advocu.
+  it('an unreviewed group picks its primary from present docs: a removed newer form row is skipped', () => {
     const removedLatest = form('row-7', 7, { abstract: 'Removed abstract', removedFromSheet: true })
     const cards = buildCards([advocuDoc, removedLatest, formDoc], none)
     expect(cards).toHaveLength(1)
-    expect(cards[0]).toMatchObject({ id: 'row-7', displayId: 'row-2', removedFromSheet: false, abstract: 'Form abstract' })
+    expect(cards[0]).toMatchObject({ id: 'row-2', displayId: 'row-2', removedFromSheet: false, abstract: 'Form abstract' })
+  })
+
+  it('split group: a present card does not list a removed reviewed member as a possible duplicate', () => {
+    const removedAdvocu = { ...advocuDoc, removedFromSheet: true }
+    const newer = form('row-7', 7, { abstract: 'Unreviewed newer abstract' })
+    const cards = buildCards([formDoc, removedAdvocu, newer], only('row-2', 'advocu-a'))
+    expect(cards).toHaveLength(3)
+    expect(cardFor(cards, 'row-2')?.possibleDuplicateOf).toEqual(['row-7'])
+    expect(cardFor(cards, 'row-7')?.possibleDuplicateOf).toEqual(['row-2'])
+    expect(cardFor(cards, 'advocu-a')?.possibleDuplicateOf).toEqual(['row-2', 'row-7'])
+  })
+
+  it('advocu details come from the latest present advocu doc when the primary is a form doc', () => {
+    const presentOlder = advocu('advocu-c', '2026-10-03T08:00:00.000Z')
+    const removedNewer = advocu('advocu-b', '2026-10-09T08:00:00.000Z', { removedFromSheet: true })
+    const cards = buildCards([formDoc, removedNewer, presentOlder], none)
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({ id: 'row-2', advocu: presentOlder.advocu })
   })
 
   it('a group with every member removed is one removed card', () => {
     const cards = buildCards([{ ...formDoc, removedFromSheet: true }, { ...advocuDoc, removedFromSheet: true }], none)
     expect(cards).toHaveLength(1)
-    expect(cards[0]).toMatchObject({ id: 'row-2', removedFromSheet: true })
+    expect(cards[0]).toMatchObject({ id: 'row-2', displayId: 'row-2', removedFromSheet: true })
+  })
+
+  it('an all-removed advocu-only group uses the latest advocu doc', () => {
+    const later = advocu('advocu-b', '2026-10-09T08:00:00.000Z', { removedFromSheet: true })
+    const earlier = advocu('advocu-c', '2026-10-03T08:00:00.000Z', { removedFromSheet: true })
+    const cards = buildCards([earlier, later], none)
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({ id: 'advocu-b', displayId: 'advocu-b', removedFromSheet: true, advocu: later.advocu })
   })
 
   it('different titles stay separate', () => {
@@ -100,12 +125,21 @@ describe('buildCards', () => {
     expect([...cards[0].memberIds].sort()).toEqual(['row-2', 'row-7'])
   })
 
-  it('no-review advocu-only group uses the oldest advocu doc', () => {
-    const later = advocu('advocu-b', '2026-10-09T08:00:00.000Z', { abstract: 'Later' })
-    const earlier = advocu('advocu-c', '2026-10-03T08:00:00.000Z', { abstract: 'Earlier' })
-    const cards = buildCards([later, earlier], none)
+  const later = advocu('advocu-b', '2026-10-09T08:00:00.000Z', { abstract: 'Later' })
+  const earlier = advocu('advocu-c', '2026-10-03T08:00:00.000Z', { abstract: 'Earlier' })
+
+  it('no-review advocu-only group uses the latest advocu doc', () => {
+    const cards = buildCards([earlier, later], none)
     expect(cards).toHaveLength(1)
-    expect(cards[0]).toMatchObject({ id: 'advocu-c', abstract: 'Later', sources: ['advocu'] })
+    expect(cards[0]).toMatchObject({
+      id: 'advocu-b', displayId: 'advocu-b', abstract: 'Later', sources: ['advocu'], advocu: later.advocu,
+    })
+  })
+
+  it('scoring an unreviewed card does not change its content', () => {
+    const before = buildCards([earlier, later], none)[0]
+    const after = buildCards([earlier, later], only(before.id))[0]
+    expect(after).toEqual(before)
   })
 
   it('cardFor finds a card by member id', () => {
