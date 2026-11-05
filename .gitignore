@@ -1,1 +1,14 @@
 .superpowers/
+node_modules
+dist
+/functions/lib
+.env
+.env.*
+!.env.example
+*.csv
+*-key.json
+serviceAccount*.json
+*-debug.log
+.firebase/
+.playwright-mcp/
+.DS_Store

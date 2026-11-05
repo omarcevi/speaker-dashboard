@@ -1,0 +1,99 @@
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
+import type { Comment, Review, Score, Submission, SyncMeta } from '../../../functions/src/model.ts'
+import { useAuth } from '../auth/AuthProvider.tsx'
+import { db } from '../firebase.ts'
+
+type CommentWithId = Comment & { id: string }
+
+interface DataValue {
+  submissions: Submission[]
+  reviews: Map<string, Review>
+  scores: Map<string, Score[]>
+  comments: Map<string, CommentWithId[]>
+  sync: SyncMeta | null
+  loading: boolean
+  error: string | null
+}
+
+const empty: DataValue = {
+  submissions: [],
+  reviews: new Map(),
+  scores: new Map(),
+  comments: new Map(),
+  sync: null,
+  loading: true,
+  error: null,
+}
+
+const DataContext = createContext<DataValue>(empty)
+
+function groupBySubmission<T extends { submissionId: string }>(snap: QuerySnapshot, make: (id: string, d: unknown) => T) {
+  const map = new Map<string, T[]>()
+  for (const d of snap.docs) {
+    const item = make(d.id, d.data())
+    const list = map.get(item.submissionId)
+    if (list) list.push(item)
+    else map.set(item.submissionId, [item])
+  }
+  return map
+}
+
+const SOURCES = 5
+
+export function DataProvider({ children }: { children: ReactNode }) {
+  const { me } = useAuth()
+  const role = me?.role
+  const allowed = role === 'member' || role === 'admin'
+
+  const [data, setData] = useState<DataValue>(empty)
+  const [ready, setReady] = useState<ReadonlySet<string>>(new Set())
+
+  useEffect(() => {
+    if (!allowed) return
+    const markReady = (key: string) => setReady((r) => (r.has(key) ? r : new Set(r).add(key)))
+    const fail = (key: string) => (e: Error) => {
+      console.error(`Listener ${key} failed`, e)
+      setData((p) => ({ ...p, error: "Couldn't load live data. Some information may be missing or out of date." }))
+      markReady(key)
+    }
+    const unsubs = [
+      onSnapshot(collection(db, 'submissions'), (snap) => {
+        const submissions = snap.docs.map((d) => ({ ...(d.data() as Submission), id: d.id }))
+        setData((p) => ({ ...p, submissions }))
+        markReady('submissions')
+      }, fail('submissions')),
+      onSnapshot(collection(db, 'reviews'), (snap) => {
+        const reviews = new Map(snap.docs.map((d) => [d.id, d.data() as Review]))
+        setData((p) => ({ ...p, reviews }))
+        markReady('reviews')
+      }, fail('reviews')),
+      onSnapshot(collection(db, 'scores'), (snap) => {
+        const scores = groupBySubmission(snap, (_id, d) => d as Score)
+        setData((p) => ({ ...p, scores }))
+        markReady('scores')
+      }, fail('scores')),
+      onSnapshot(collection(db, 'comments'), (snap) => {
+        const comments = groupBySubmission(snap, (id, d) => ({ ...(d as Comment), id }))
+        setData((p) => ({ ...p, comments }))
+        markReady('comments')
+      }, fail('comments')),
+      onSnapshot(doc(db, 'meta', 'sync'), (snap) => {
+        setData((p) => ({ ...p, sync: snap.exists() ? (snap.data() as SyncMeta) : null }))
+        markReady('sync')
+      }, fail('sync')),
+    ]
+    return () => {
+      unsubs.forEach((u) => u())
+      setData(empty)
+      setReady(new Set())
+    }
+  }, [allowed])
+
+  const value = useMemo(() => ({ ...data, loading: allowed && ready.size < SOURCES }), [data, allowed, ready])
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>
+}
+
+export function useData(): DataValue {
+  return useContext(DataContext)
+}
