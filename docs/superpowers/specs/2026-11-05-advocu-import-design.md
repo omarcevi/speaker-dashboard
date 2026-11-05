@@ -91,7 +91,7 @@ Some speakers applied in both places, sometimes with the same talk and sometimes
 
 ## Merged cards ("Form + Advocu")
 
-A **talk group** is every non-removed document, from either source, that shares the same `speakerKey` and the same normalised title.
+A **talk group** is every document, from either source and whether or not it has been removed, that shares the same `speakerKey` and the same normalised title.
 - In practice this is usually one Form talk plus one Advocu application.
 - The rule is the same for any size. An existing Form-only pair with the same title also folds into one card. *(Claude's call: same talk, same speaker, so the team shouldn't review it twice.)*
 
@@ -121,9 +121,12 @@ A **talk group** is every non-removed document, from either source, that shares 
 The primary is stable in practice: once the team acts on a merged card, only the primary has review data, and hidden documents can't gain any. *(Claude's call. It replaces "first in the database", which could hide a decision made on the newer document.)*
 
 **Card content:**
-- The card shows the most recent Form document's fields, if the group has one. Those are richer: photo, phone, links, logistics.
-- It adds an "Also on Advocu" block with the Advocu-only details.
+- **A reviewed version is never silently replaced.** When the primary has review data and is still present, the card shows the primary's own fields. That's what the team actually reviewed.
+- Otherwise, the card shows the most recent present Form document's fields if the group has one. Those are richer: photo, phone, links, logistics.
 - With no Form document, the card shows the Advocu fields.
+- The card adds an "Also on Advocu" block with the Advocu-only details.
+- **Version warning.** Sometimes the primary has review data but the card shows another document's content, because the reviewed version was removed. Then the card shows a visible warning: "Showing a newer <Form|Advocu> version than the one reviewed".
+- *(Claude's call, after a security review.)* The Form's email field is typed, not verified, so anyone could submit the same email and title. Without these two rules, that would silently swap the content of an approved card.
 
 **Forming and splitting:**
 - When a group forms later (for example, an approved Advocu-only speaker fills in the Form with the same title), it merges automatically. The card keeps the existing decision, because the reviewed document becomes the primary.
