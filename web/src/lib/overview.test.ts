@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AiDoc } from '../../../functions/src/model.ts'
 import { buildCards } from './cards.ts'
-import { overviewState } from './overview.ts'
+import { overviewState, regenerateFailure } from './overview.ts'
 import { fakeSub } from './testing.ts'
 
 const overview = {
@@ -33,5 +33,35 @@ describe('overviewState', () => {
     const c = { ...card(), id: 'adv', displayId: 'form' }
     expect(overviewState(c, new Map([['adv', aiDoc({ sourceHash: 'zzz' })], ['form', aiDoc()]])).kind).toBe('ready')
     expect(overviewState(c, new Map([['adv', aiDoc()]])).kind).toBe('missing')
+  })
+})
+
+describe('overviewState for talks without an overview by design', () => {
+  it('is hidden for a removed card, even with an ai doc', () => {
+    const c = { ...card(), removedFromSheet: true }
+    expect(overviewState(c, new Map([['a', aiDoc()]])).kind).toBe('hidden')
+    expect(overviewState(c, new Map()).kind).toBe('hidden')
+  })
+  it('is hidden for a no-session card', () => {
+    const c = { ...card(), noSession: true }
+    expect(overviewState(c, new Map()).kind).toBe('hidden')
+    expect(overviewState(c, new Map([['a', aiDoc()]])).kind).toBe('hidden')
+  })
+})
+
+describe('regenerateFailure', () => {
+  const err = (code: string, message: string) => Object.assign(new Error(message), { code })
+  it('maps functions/internal to a plain message', () => {
+    expect(regenerateFailure(err('functions/internal', 'internal'))).toBe('Could not regenerate this overview — try again later.')
+  })
+  it('maps functions/deadline-exceeded to a still-working message', () => {
+    expect(regenerateFailure(err('functions/deadline-exceeded', 'deadline-exceeded')))
+      .toBe("Still working — the overview will update when it's ready.")
+  })
+  it('shows the message for other errors, matching by code rather than message text', () => {
+    expect(regenerateFailure(err('functions/not-found', 'No present submission with a title has that id.')))
+      .toBe('No present submission with a title has that id.')
+    expect(regenerateFailure(new Error('internal'))).toBe('internal')
+    expect(regenerateFailure('boom')).toBe('boom')
   })
 })

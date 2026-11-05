@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { functions } from '../firebase.ts'
 import type { Card } from '../lib/cards.ts'
-import { overviewState } from '../lib/overview.ts'
+import { overviewState, regenerateFailure } from '../lib/overview.ts'
 import { loadOverviewOpen, saveOverviewOpen } from '../lib/prefs.ts'
 
 export default function OverviewBox({ card }: { card: Card }) {
@@ -26,15 +26,17 @@ export default function OverviewBox({ card }: { card: Card }) {
     setBusy(true)
     setFailure(null)
     try {
-      await httpsCallable(functions, 'regenerateAi')({ id: card.displayId })
+      // The function may run for up to 300 s; the client default (70 s) would give up while it still works.
+      await httpsCallable(functions, 'regenerateAi', { timeout: 300_000 })({ id: card.displayId })
     } catch (e) {
       if (!mounted.current) return
-      const msg = e instanceof Error ? e.message : String(e)
-      setFailure(msg === 'internal' ? 'Could not regenerate this overview — try again later.' : msg)
+      setFailure(regenerateFailure(e))
     } finally {
       if (mounted.current) setBusy(false)
     }
   }
+
+  if (state.kind === 'hidden') return null
 
   const flags = o ? ([
     ['Abstract', o.abstract], ['Community', o.community], ['Speaking', o.speaking], ['Student', o.student],
