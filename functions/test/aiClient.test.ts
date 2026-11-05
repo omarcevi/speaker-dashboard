@@ -1,7 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { vertexAiClient, validateOverview, OVERVIEW_MODEL, EMBED_MODEL, type GenAiLike } from '../src/ai/client';
 import { fakeAiClient } from '../src/testing/fakeAiClient';
 import { OVERVIEW_SCHEMA, OVERVIEW_SYSTEM, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from '../src/ai/prompt';
+
+// Stands in for the real SDK client so the construction path can be checked without any network call.
+const sdk = vi.hoisted(() => ({ made: [] as { opts: any; gen: any[]; emb: any[] }[], text: '' }));
+vi.mock('@google/genai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@google/genai')>();
+  class GoogleGenAI {
+    models: GenAiLike['models'];
+    constructor(opts: any) {
+      const rec = { opts, gen: [] as any[], emb: [] as any[] };
+      sdk.made.push(rec);
+      this.models = {
+        generateContent: async (r: any) => { rec.gen.push(r); return { text: sdk.text }; },
+        embedContent: async (r: any) => { rec.emb.push(r); return { embeddings: r.contents.map(() => ({ values: new Array(768).fill(0.1) })) }; },
+      };
+    }
+  }
+  return { ...actual, GoogleGenAI };
+});
 
 const V = Array.from({ length: 768 }, () => 0.1);
 const good = {
@@ -10,19 +28,61 @@ const good = {
   speaking: { value: 'some', why: 'w' }, student: { value: 'no', why: 'w' },
 };
 
+const wrong = async () => { throw new Error('wrong client'); };
+/** Two stubs: generation only answers generateContent, embed only answers embedContent. */
 function stub(text: string) {
   const gen: any[] = [], emb: any[] = [];
-  const genai: GenAiLike = {
-    models: {
-      generateContent: async (r: any) => { gen.push(r); return { text } as any; },
-      embedContent: async (r: any) => { emb.push(r); return { embeddings: (r.contents as string[]).map(() => ({ values: V })) } as any; },
-    },
+  const genai = {
+    generation: { models: { generateContent: async (r: any) => { gen.push(r); return { text } as any; }, embedContent: wrong } } as GenAiLike,
+    embed: { models: { generateContent: wrong, embedContent: async (r: any) => { emb.push(r); return { embeddings: (r.contents as string[]).map(() => ({ values: V })) } as any; } } } as GenAiLike,
   };
   return { genai, gen, emb };
 }
-const mk = (genai: GenAiLike) => vertexAiClient({ project: 'p', location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL, genai });
+const both = (g: GenAiLike) => ({ generation: g, embed: g });
+const opts = { project: 'p', generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL } as const;
+const mk = (genai: { generation: GenAiLike; embed: GenAiLike }) => vertexAiClient({ ...opts, genai });
 
 describe('vertexAiClient', () => {
+  it('uses gemini-3.8-flash for generation and gemini-embedding-001 for embeddings', () => {
+    expect(OVERVIEW_MODEL).toBe('gemini-3.8-flash');
+    expect(EMBED_MODEL).toBe('gemini-embedding-001');
+  });
+  it('overview and cluster calls go to the generation client, embeddings to the embed client', async () => {
+    const s = stub(JSON.stringify(good));
+    const c = mk(s.genai);
+    await c.overview('x');
+    await c.nameClusters([['a']]);
+    await c.embed(['a']);
+    expect(s.gen.map((r) => r.model)).toEqual(['gemini-3.8-flash', 'gemini-3.8-flash']);
+    expect(s.emb.map((r) => r.model)).toEqual(['gemini-embedding-001']);
+  });
+  it('builds the real clients on the eu multi-region (generation) and europe-west1 (embeddings), never global', async () => {
+    sdk.made.length = 0;
+    sdk.text = JSON.stringify(good);
+    const c = vertexAiClient(opts);
+    expect(sdk.made.map((m) => m.opts).sort((a, b) => a.location.localeCompare(b.location))).toEqual([
+      { vertexai: true, project: 'p', location: 'eu' },
+      { vertexai: true, project: 'p', location: 'europe-west1' },
+    ]);
+    await c.overview('x');
+    await c.nameClusters([['a']]);
+    await c.embed(['a']);
+    const at = (loc: string) => sdk.made.find((m) => m.opts.location === loc)!;
+    expect(at('eu').gen.map((r) => r.model)).toEqual([OVERVIEW_MODEL, OVERVIEW_MODEL]);
+    expect(at('eu').emb).toEqual([]);
+    expect(at('europe-west1').emb.map((r) => r.model)).toEqual([EMBED_MODEL]);
+    expect(at('europe-west1').gen).toEqual([]);
+  });
+  it('generation calls ask for low thinking and keep the default temperature', async () => {
+    const s = stub(JSON.stringify(good));
+    const c = mk(s.genai);
+    await c.overview('x');
+    await c.nameClusters([['a']]);
+    for (const r of s.gen) {
+      expect(r.config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' });
+      expect(r.config).not.toHaveProperty('temperature');
+    }
+  });
   it('overview call uses JSON schema and the system prompt', async () => {
     const s = stub(JSON.stringify(good));
     const r = await mk(s.genai).overview('<submission>x</submission>');
@@ -64,7 +124,7 @@ describe('vertexAiClient', () => {
       if (ms > 0) setTimeout(() => reject(new Error('This operation was aborted')), ms);
     });
     const genai: GenAiLike = { models: { generateContent: hang, embedContent: hang } };
-    const c = vertexAiClient({ project: 'p', location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL, genai, timeoutMs: 20 });
+    const c = vertexAiClient({ ...opts, genai: both(genai), timeoutMs: 20 });
     await expect(c.overview('x')).rejects.toThrow(/aborted/);
     await expect(c.embed(['a'])).rejects.toThrow(/aborted/);
     await expect(c.nameClusters([['a']])).rejects.toThrow(/aborted/);
@@ -79,7 +139,7 @@ describe('vertexAiClient', () => {
   });
   it('embed rejects wrong-dimension vectors', async () => {
     const genai: GenAiLike = { models: { generateContent: async () => ({}), embedContent: async () => ({ embeddings: [{ values: [0.1, 0.2] }] }) } };
-    await expect(mk(genai).embed(['secret text'])).rejects.toThrow(/invalid embedding response$/);
+    await expect(mk(both(genai)).embed(['secret text'])).rejects.toThrow(/invalid embedding response$/);
   });
   it('overview rejects empty strings', async () => {
     for (const bad of [

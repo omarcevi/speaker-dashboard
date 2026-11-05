@@ -62,12 +62,17 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
   };
 }
 
-/** Vertex AI in europe-west1, in this project. The emulator gets the fake, so it never calls Vertex. */
+/**
+ * Vertex AI in this project, inside the EU: generation on the `eu` multi-region, embeddings in europe-west1.
+ * The emulator gets the fake, so it never calls Vertex.
+ */
 function aiClient(): AiClient {
   if (process.env.FUNCTIONS_EMULATOR === 'true') return fakeAiClient();
   const project = process.env.GCLOUD_PROJECT;
   if (!project) throw new Error('GCLOUD_PROJECT not set');
-  return vertexAiClient({ project, location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL });
+  return vertexAiClient({
+    project, generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL,
+  });
 }
 
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {

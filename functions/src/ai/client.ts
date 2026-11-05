@@ -1,9 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
 import type { AiOverview } from '../model';
 import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt';
 import { escapeAngles } from './inputs';
 
-export const OVERVIEW_MODEL = 'gemini-2.5-flash';
+/** Overviews and cluster names. Vertex serves it only on `global` or the `us`/`eu` multi-regions; we use `eu`. */
+export const OVERVIEW_MODEL = 'gemini-3.8-flash';
 export const EMBED_MODEL = 'gemini-embedding-001';
 export const EMBED_DIMS = 768;
 /** Texts per embedContent request. Vertex gemini-embedding-001 accepts one input per request; raise only if that changes. */
@@ -25,7 +26,10 @@ export interface GenAiLike {
     generateContent(p: {
       model: string;
       contents: string;
-      config?: { systemInstruction?: string; responseMimeType?: string; responseJsonSchema?: unknown; httpOptions?: { timeout?: number } };
+      config?: {
+        systemInstruction?: string; responseMimeType?: string; responseJsonSchema?: unknown;
+        thinkingConfig?: ThinkingConfig; httpOptions?: { timeout?: number };
+      };
     }): Promise<{ text?: string }>;
     embedContent(p: {
       model: string;
@@ -71,17 +75,35 @@ export function validateOverview(v: unknown): OverviewFields {
   };
 }
 
+/**
+ * Vertex AI in this project, inside the EU only. The location types are literals, so `global` can't be passed.
+ * Two SDK clients: generation on the `eu` multi-region (aiplatform.eu.rep.googleapis.com), embeddings in `europe-west1`.
+ */
 export function vertexAiClient(opts: {
-  project: string; location: 'europe-west1'; overviewModel: string; embedModel: string; genai?: GenAiLike; timeoutMs?: number;
+  project: string;
+  generationLocation: 'eu';
+  embedLocation: 'europe-west1';
+  overviewModel: string;
+  embedModel: string;
+  /** Test stubs. A missing one is a real Vertex client. */
+  genai?: { generation?: GenAiLike; embed?: GenAiLike };
+  timeoutMs?: number;
 }): AiClient {
-  const genai: GenAiLike = opts.genai ?? (new GoogleGenAI({ vertexai: true, project: opts.project, location: opts.location }) as unknown as GenAiLike);
+  const vertex = (location: string) => new GoogleGenAI({ vertexai: true, project: opts.project, location }) as unknown as GenAiLike;
+  const generation = opts.genai?.generation ?? vertex(opts.generationLocation);
+  const embedder = opts.genai?.embed ?? vertex(opts.embedLocation);
   const httpOptions = { timeout: opts.timeoutMs ?? AI_TIMEOUT_MS };
+  // Gemini 3: keep the default temperature; low thinking cuts latency and cost for these short structured answers.
+  const thinkingConfig: ThinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
   return {
     async overview(input) {
-      const res = await genai.models.generateContent({
+      const res = await generation.models.generateContent({
         model: opts.overviewModel,
         contents: input,
-        config: { systemInstruction: OVERVIEW_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: OVERVIEW_SCHEMA, httpOptions },
+        config: {
+          systemInstruction: OVERVIEW_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: OVERVIEW_SCHEMA,
+          thinkingConfig, httpOptions,
+        },
       });
       return { fields: validateOverview(parseJson(res.text)), model: opts.overviewModel };
     },
@@ -89,7 +111,7 @@ export function vertexAiClient(opts: {
       const out: number[][] = [];
       for (let i = 0; i < texts.length; i += EMBED_BATCH) {
         const chunk = texts.slice(i, i + EMBED_BATCH);
-        const res = await genai.models.embedContent({
+        const res = await embedder.models.embedContent({
           model: opts.embedModel,
           contents: chunk,
           config: { outputDimensionality: EMBED_DIMS, taskType: 'SEMANTIC_SIMILARITY', httpOptions },
@@ -106,10 +128,13 @@ export function vertexAiClient(opts: {
       const prompt = groups
         .map((g, id) => `Group ${id}:\n${g.map((t) => `<title>${escapeAngles(t).replace(/\s*[\r\n]+\s*/g, ' ')}</title>`).join('\n')}`)
         .join('\n\n');
-      const res = await genai.models.generateContent({
+      const res = await generation.models.generateContent({
         model: opts.overviewModel,
         contents: prompt,
-        config: { systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA, httpOptions },
+        config: {
+          systemInstruction: CLUSTER_SYSTEM, responseMimeType: 'application/json', responseJsonSchema: CLUSTER_SCHEMA,
+          thinkingConfig, httpOptions,
+        },
       });
       const parsed = parseJson(res.text); // throws only if not JSON at all
       const entries = isObj(parsed) && Array.isArray(parsed.labels) ? parsed.labels : [];

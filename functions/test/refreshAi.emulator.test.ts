@@ -344,7 +344,7 @@ describe('refreshAi', () => {
         embedContent: async ({ contents }) => ({ embeddings: contents.map(() => ({ values: new Array(768).fill(0.5) })) }),
       },
     };
-    const client = vertexAiClient({ project: 'demo-cfp', location: 'europe-west1', overviewModel: 'stub', embedModel: 'stub', genai });
+    const client = vertexAiClient({ project: 'demo-cfp', generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: 'stub', embedModel: 'stub', genai: { generation: genai, embed: genai } });
     const r = await refreshAi(db, client);
 
     expect(r).toMatchObject({ generated: 0, pending: n });
@@ -367,7 +367,7 @@ describe('refreshAi', () => {
       if (ms > 0) setTimeout(() => reject(new Error('This operation was aborted')), ms);
     });
     const genai: GenAiLike = { models: { generateContent: hang, embedContent: hang } };
-    const client = vertexAiClient({ project: 'demo-cfp', location: 'europe-west1', overviewModel: 'stub', embedModel: 'stub', genai, timeoutMs: 20 });
+    const client = vertexAiClient({ project: 'demo-cfp', generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: 'stub', embedModel: 'stub', genai: { generation: genai, embed: genai }, timeoutMs: 20 });
     const r = await refreshAi(db, client);
     expect(r).toMatchObject({ generated: 0, pending: n });
     expect(r.failed).toHaveLength(n);
