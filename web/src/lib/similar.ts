@@ -15,6 +15,18 @@ export type Similar = {
   top: { card: Card; score: number }[]
 }
 
+export type SimilarState = 'hidden' | 'not-ready' | 'ready'
+
+// No ai doc: the panel is hidden. A placeholder (no overview) or a doc with no neighbours yet would show
+// "0 submissions close · 0 already approved", which reads as a fact, so it says "not ready yet" instead.
+export function similarState(doc: AiDoc | undefined): SimilarState {
+  if (!doc) return 'hidden'
+  return !doc.overview || doc.neighbors.length === 0 ? 'not-ready' : 'ready'
+}
+
+// Closeness bar width in percent. Cosine scores can be negative.
+export const barWidth = (score: number) => (Number.isFinite(score) ? Math.min(100, Math.max(0, Math.round(score * 100))) : 0)
+
 // Neighbours come from the AI doc (ids of submission docs); statuses are always read live from `reviews`.
 export function similarFor(card: Card, cards: Card[], ai: Map<string, AiDoc>, reviews: Map<string, Review>): Similar {
   const neighbors = ai.get(card.displayId)?.neighbors ?? []

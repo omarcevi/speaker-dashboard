@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AiDoc } from '../../../functions/src/model.ts'
 import { buildCards } from './cards.ts'
-import { CLOSE, VERY_SIMILAR, similarFor } from './similar.ts'
+import { CLOSE, VERY_SIMILAR, barWidth, similarFor, similarState } from './similar.ts'
 import { fakeReview, fakeSub } from './testing.ts'
 
 const aiDoc = (neighbors: { id: string; score: number }[]): AiDoc =>
@@ -51,5 +51,32 @@ describe('similarFor', () => {
     const ai = new Map([[me.displayId, aiDoc([{ id: 'o1', score: 0.9 }])]])
     expect(similarFor(me, cards, ai, new Map()).approvedClose).toBe(0)
     expect(similarFor(me, cards, ai, new Map([[other.id, fakeReview('approved')]])).approvedClose).toBe(1)
+  })
+})
+
+describe('similarState', () => {
+  const overview = {} as NonNullable<AiDoc['overview']>
+  const n = [{ id: 'o1', score: 0.9 }]
+  it('is hidden without an ai doc', () => {
+    expect(similarState(undefined)).toBe('hidden')
+  })
+  it('is not ready for a placeholder with no overview, even with neighbours', () => {
+    expect(similarState(aiDoc([]))).toBe('not-ready')
+    expect(similarState(aiDoc(n))).toBe('not-ready')
+  })
+  it('is not ready for a new doc with an overview but no neighbours yet', () => {
+    expect(similarState({ ...aiDoc([]), overview })).toBe('not-ready')
+  })
+  it('is ready with an overview and neighbours', () => {
+    expect(similarState({ ...aiDoc(n), overview })).toBe('ready')
+  })
+})
+
+describe('barWidth', () => {
+  it('is the score as a percentage, clamped to 0..100', () => {
+    expect(barWidth(0.834)).toBe(83)
+    expect(barWidth(-0.2)).toBe(0)
+    expect(barWidth(1.3)).toBe(100)
+    expect(barWidth(Number.NaN)).toBe(0)
   })
 })

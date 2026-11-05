@@ -1,14 +1,18 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useData } from '../data/DataProvider.tsx'
 import type { Card } from '../lib/cards.ts'
-import { similarFor } from '../lib/similar.ts'
+import { barWidth, similarFor, similarState } from '../lib/similar.ts'
 import { statusOf } from '../lib/status.ts'
 import StatusChip from './StatusChip.tsx'
 
 export default function SimilarTalks({ card }: { card: Card }) {
   const { cards, reviews, ai } = useData()
   const { search } = useLocation()
-  if (!ai.has(card.displayId)) return null
+  const state = similarState(ai.get(card.displayId))
+  if (state === 'hidden') return null
+  if (state === 'not-ready') {
+    return <section className="similar"><p className="muted">Similar talks not ready yet</p></section>
+  }
   const s = similarFor(card, cards, ai, reviews)
   return (
     <section className="similar">
@@ -21,7 +25,7 @@ export default function SimilarTalks({ card }: { card: Card }) {
       {s.top.map(({ card: c, score }) => (
         <div key={c.id} className="similar-row">
           <StatusChip status={statusOf(reviews, c.id)} />
-          <span className="similar-bar" title={score.toFixed(2)}><span style={{ width: `${Math.round(score * 100)}%` }} /></span>
+          <span className="similar-bar" title={score.toFixed(2)}><span style={{ width: `${barWidth(score)}%` }} /></span>
           <Link to={`/talk/${c.id}${search}`}>{c.title}</Link>
         </div>
       ))}
