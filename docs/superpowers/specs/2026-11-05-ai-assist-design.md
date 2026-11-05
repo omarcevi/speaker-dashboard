@@ -126,7 +126,7 @@ The team reviews about a hundred and fifty talks in meetings. Two things slow th
 - **Regenerate (admin).** An admin-only callable, `regenerateAi({ id })`, regenerates that one document's overview and embedding, ignoring the cap. It then recomputes `neighbors` and the map. The box shows "Regenerating…" while the call runs.
 - **Model output** uses Gemini **structured output** (a response schema), so flags can only take the listed values. Pick a current Flash-class Gemini model available on Vertex AI in `europe-west1`, and record its id in each overview.
 - **Similarity:** cosine similarity on the embeddings. There are two cut-offs:
-  - **close:** counts towards "N submissions close to this one". The count is capped at what the 30 stored neighbours can show, displayed as "30+".
+  - **close:** counts towards "N submissions close to this one". The count is capped at what the 30 stored neighbours can show. When the cap is hit, the count shows a trailing "+", for example "24+". That's the number of distinct talks among the stored neighbours, after merged cards and removed talks are taken out. *(Claude's call: a literal "30+" would overstate the count after de-duplication.)*
   - **very similar:** triggers the "already approved" warning
 
   The cut-offs are **constants in the web app**, applied in the browser to the stored neighbour scores. Retuning them needs no re-embedding and no backfill. Start with sensible defaults for the chosen embedding model. Before go-live, the owner and builder tune them once on the real submissions by looking at the pairs each cut-off flags.
