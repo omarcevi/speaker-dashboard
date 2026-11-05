@@ -44,9 +44,12 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
   }
   const latestWhere = (docs: Submission[], ok: (s: Submission) => boolean) =>
     docs.filter(ok).sort((a, b) => a.row - b.row).at(-1)
-  const cardStatus = (doc: Submission) => {
+  // 'approved' only for the doc an approved card displays; a hidden merged member could be a spoofed response.
+  const docState = (doc: Submission): 'approved' | 'declined' | 'other' => {
     const card = cardFor(cards, doc.id)
-    return statusOf(reviews, card ? card.id : doc.id)
+    const status = statusOf(reviews, card ? card.id : doc.id)
+    if (status === 'declined') return 'declined'
+    return card && card.displayId === doc.id && status === 'approved' ? 'approved' : 'other'
   }
 
   const rows: LogisticsRow[] = []
@@ -54,8 +57,8 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
     const talks = [...group].sort((a, b) => a.row - b.row)
     const who = talks[talks.length - 1]
     const docs = formDocs.get(key) ?? []
-    const approvedDoc = latestWhere(docs, (d) => cardStatus(d) === 'approved')
-    const otherDoc = approvedDoc ? undefined : latestWhere(docs, (d) => cardStatus(d) !== 'declined')
+    const approvedDoc = latestWhere(docs, (d) => docState(d) === 'approved')
+    const otherDoc = approvedDoc ? undefined : latestWhere(docs, (d) => docState(d) !== 'declined')
     const form = approvedDoc ?? otherDoc
     rows.push({
       kind: 'speaker',

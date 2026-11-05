@@ -60,6 +60,20 @@ describe('logisticsRows', () => {
     ]
     expect(rowsFor(subs, approved('a'))[0]).toMatchObject({ tshirt: 'M', formAnswers: 'yes' })
   })
+  it('a spoofed form doc merged hidden into an approved card is not used', () => {
+    const subs = [
+      fakeSub({ id: 'f3', row: 3, speakerKey: 's1', title: 'Same', logistics: L('M') }),
+      fakeSub({ id: 'f9', row: 9, speakerKey: 's1', title: 'Same', logistics: L('XXL') }),
+    ]
+    expect(rowsFor(subs, approved('f3'))[0]).toMatchObject({ tshirt: 'M', formAnswers: 'yes' })
+  })
+  it('a form doc merged hidden into an advocu-primary approved card is unreviewed', () => {
+    const subs = [
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu', title: 'Same' }),
+      fakeSub({ id: 'f9', row: 9, speakerKey: 's1', title: 'Same', logistics: L('XXL') }),
+    ]
+    expect(rowsFor(subs, approved('adv'))[0]).toMatchObject({ tshirt: 'XXL', formAnswers: 'unreviewed' })
+  })
   it('ignores declined form docs', () => {
     const subs = [
       fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu' }),
