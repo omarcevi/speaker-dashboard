@@ -2,8 +2,14 @@ import type { AiDoc, Review } from '../../../functions/src/model.ts'
 import { cardFor, type Card } from './cards.ts'
 import { statusOf } from './status.ts'
 
-export const CLOSE = 0.75
-export const VERY_SIMILAR = 0.85
+// Calibrated on the real corpus (2026-11-05: 143 talks, gemini-embedding-001, SEMANTIC_SIMILARITY).
+// Scores between any two talks sit in a narrow high band (0.69–1.0, median 0.82), so raw scores mean little.
+// CLOSE ≈ top 6% of pairs (a typical talk has ~3 close ones); VERY_SIMILAR ≈ top 0.5% (near-same topic).
+export const CLOSE = 0.88
+export const VERY_SIMILAR = 0.92
+// The closeness bar runs from the corpus median (unrelated talks → empty) to near-duplicates (→ full).
+export const BAR_EMPTY = 0.82
+export const BAR_FULL = 0.95
 const NEIGHBOR_LIMIT = 30
 const TOP = 5
 
@@ -24,8 +30,11 @@ export function similarState(doc: AiDoc | undefined): SimilarState {
   return !doc.overview || doc.neighbors.length === 0 ? 'not-ready' : 'ready'
 }
 
-// Closeness bar width in percent. Cosine scores can be negative.
-export const barWidth = (score: number) => (Number.isFinite(score) ? Math.min(100, Math.max(0, Math.round(score * 100))) : 0)
+// Closeness bar width in percent, scaled BAR_EMPTY..BAR_FULL → 0..100 and clamped.
+export const barWidth = (score: number) =>
+  Number.isFinite(score)
+    ? Math.min(100, Math.max(0, Math.round(((score - BAR_EMPTY) / (BAR_FULL - BAR_EMPTY)) * 100)))
+    : 0
 
 // Neighbours come from the AI doc (ids of submission docs); statuses are always read live from `reviews`.
 export function similarFor(card: Card, cards: Card[], ai: Map<string, AiDoc>, reviews: Map<string, Review>): Similar {

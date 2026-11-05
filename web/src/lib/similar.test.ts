@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AiDoc } from '../../../functions/src/model.ts'
 import { buildCards } from './cards.ts'
-import { CLOSE, VERY_SIMILAR, barWidth, similarFor, similarState } from './similar.ts'
+import { BAR_EMPTY, BAR_FULL, CLOSE, VERY_SIMILAR, barWidth, similarFor, similarState } from './similar.ts'
 import { fakeReview, fakeSub } from './testing.ts'
 
 const aiDoc = (neighbors: { id: string; score: number }[]): AiDoc =>
@@ -37,7 +37,7 @@ describe('similarFor', () => {
     expect(r.veryAlikeApproved.map((c) => c.title)).toEqual(['Other'])
   })
   it('capped when 30 neighbors all reach CLOSE', () => {
-    const ns = Array.from({ length: 30 }, (_, i) => ({ id: i === 0 ? 'o1' : `x${i}`, score: 0.9 - i * 0.001 }))
+    const ns = Array.from({ length: 30 }, (_, i) => ({ id: i === 0 ? 'o1' : `x${i}`, score: CLOSE + 0.05 - i * 0.001 }))
     expect(run(ns).capped).toBe(true)
     expect(run(ns.slice(0, 29)).capped).toBe(false)
   })
@@ -72,9 +72,22 @@ describe('similarState', () => {
   })
 })
 
+describe('calibration', () => {
+  // Measured on the real corpus (143 talks, gemini-embedding-001): any two talks score 0.69–1.0, median 0.82.
+  it('pins the cut-offs to the measured distribution', () => {
+    expect(CLOSE).toBe(0.88)
+    expect(VERY_SIMILAR).toBe(0.92)
+    expect(BAR_EMPTY).toBe(0.82)
+    expect(BAR_FULL).toBe(0.95)
+  })
+})
+
 describe('barWidth', () => {
-  it('is the score as a percentage, clamped to 0..100', () => {
-    expect(barWidth(0.834)).toBe(83)
+  it('maps BAR_EMPTY..BAR_FULL to 0..100, clamped', () => {
+    expect(barWidth(0.82)).toBe(0)
+    expect(barWidth(0.885)).toBe(50)
+    expect(barWidth(0.95)).toBe(100)
+    expect(barWidth(0.5)).toBe(0)
     expect(barWidth(-0.2)).toBe(0)
     expect(barWidth(1.3)).toBe(100)
     expect(barWidth(Number.NaN)).toBe(0)
