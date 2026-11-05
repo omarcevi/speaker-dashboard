@@ -14,6 +14,14 @@ async function advocuDocs() {
   const snap = await db.collection('submissions').where('source', '==', 'advocu').get();
   return snap.docs;
 }
+// The real emulator db, except that reading submissions fails, so applyImport hits its error path after parsing.
+const failingReads = new Proxy(db, {
+  get(target, prop) {
+    if (prop === 'collection') return () => { throw new Error('read failed'); };
+    const value = Reflect.get(target, prop, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+});
 async function snapshotOf(paths: string[]) {
   return Object.fromEntries(await Promise.all(paths.map(async p => [p, (await db.doc(p).get()).data()])));
 }
@@ -50,6 +58,16 @@ describe('applyImport', () => {
     await expect(applyImport(db, 'Timestamp,Email\r\n1,2\r\n', { apply: true, by })).rejects.toBeInstanceOf(ImportRefused);
     expect((await db.collection('submissions').get()).size).toBe(before);
     expect((await db.doc('meta/advocu').get()).exists).toBe(false);
+  });
+
+  it('a failed preview leaves meta/advocu untouched', async () => {
+    await expect(applyImport(failingReads, fakeAdvocuCsv(), { apply: false, by })).rejects.toThrow('read failed');
+    expect((await db.doc('meta/advocu').get()).exists).toBe(false);
+  });
+
+  it('a failed apply records the error in meta/advocu', async () => {
+    await expect(applyImport(failingReads, fakeAdvocuCsv(), { apply: true, by })).rejects.toThrow('read failed');
+    expect((await db.doc('meta/advocu').get()).data()).toMatchObject({ error: 'read failed' });
   });
 
   it('hide then restore keeps reviews', async () => {

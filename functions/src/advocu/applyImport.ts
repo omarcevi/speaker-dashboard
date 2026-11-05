@@ -53,7 +53,8 @@ export async function applyImport(
     }, { merge: true });
     return summary;
   } catch (e) {
-    if (e instanceof ImportRefused) throw e;
+    // A preview writes nothing, not even an error: only a failed apply is recorded.
+    if (e instanceof ImportRefused || !opts.apply) throw e;
     await db.doc('meta/advocu').set({
       error: e instanceof Error ? e.message : String(e), lastErrorAt: at,
     }, { merge: true });
