@@ -40,6 +40,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'submissions/row-2'), { title: 'T' });
     await setDoc(doc(db, 'meta/sync'), { at: 1 });
     await setDoc(doc(db, 'meta/advocu'), { total: 1 });
+    await setDoc(doc(db, 'ai/row-2'), { sourceHash: 'h', overview: null, neighbors: [], error: null });
+    await setDoc(doc(db, 'aiVectors/row-2'), { vector: [0.1, 0.2], sourceHash: 'h' });
     await setDoc(doc(db, 'scores/row-2__adm1'), {
       submissionId: 'row-2', uid: 'adm1', name: 'Adele', value: 5, updatedAt: new Date(),
     });
@@ -257,4 +259,39 @@ describe('admin roles', () => {
   it('cannot update its own role to member', async () => {
     await assertFails(updateDoc(doc(as('adm1'), 'users/adm1'), { role: 'member' }));
   });
+});
+
+describe('ai results', () => {
+  it('member can read ai/row-2', async () => {
+    await assertSucceeds(getDoc(doc(as('mem1'), 'ai/row-2')));
+  });
+  it('member can list ai', async () => {
+    await assertSucceeds(getDocs(collection(as('mem1'), 'ai')));
+  });
+  it('waiting user cannot read ai/row-2', async () => {
+    await assertFails(getDoc(doc(as('wait1'), 'ai/row-2')));
+  });
+  it('signed out cannot read ai/row-2', async () => {
+    await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'ai/row-2')));
+  });
+  it('member cannot write ai/row-2', async () => {
+    await assertFails(setDoc(doc(as('mem1'), 'ai/row-2'), { sourceHash: 'x', overview: null, neighbors: [], error: null }));
+  });
+  it('admin cannot write ai/row-2', async () => {
+    await assertFails(updateDoc(doc(as('adm1'), 'ai/row-2'), { error: 'x' }));
+  });
+  for (const uid of ['mem1', 'adm1']) {
+    it(`${uid} cannot read aiVectors/row-2`, async () => {
+      await assertFails(getDoc(doc(as(uid), 'aiVectors/row-2')));
+    });
+    it(`${uid} cannot list aiVectors`, async () => {
+      await assertFails(getDocs(collection(as(uid), 'aiVectors')));
+    });
+    it(`${uid} cannot write aiVectors/row-2`, async () => {
+      await assertFails(setDoc(doc(as(uid), 'aiVectors/row-2'), { vector: [1], sourceHash: 'x' }));
+    });
+    it(`${uid} cannot delete aiVectors/row-2`, async () => {
+      await assertFails(deleteDoc(doc(as(uid), 'aiVectors/row-2')));
+    });
+  }
 });

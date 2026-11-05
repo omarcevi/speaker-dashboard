@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { vertexAiClient, OVERVIEW_MODEL, EMBED_MODEL, type GenAiLike } from '../src/ai/client';
+import { vertexAiClient, validateOverview, OVERVIEW_MODEL, EMBED_MODEL, type GenAiLike } from '../src/ai/client';
 import { fakeAiClient } from '../src/testing/fakeAiClient';
 import { OVERVIEW_SCHEMA, OVERVIEW_SYSTEM, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from '../src/ai/prompt';
 
@@ -109,5 +109,13 @@ describe('fakeAiClient', () => {
     await expect(f.embed(['boom'])).rejects.toThrow();
     expect(f.calls.overview).toBe(3);
     expect(f.calls.embed).toBe(3);
+  });
+
+  it('always returns a schema-valid overview', async () => {
+    const f = fakeAiClient();
+    for (let i = 0; i < 200; i++) {
+      const { fields } = await f.overview(`input ${i}`);
+      expect(validateOverview(fields)).toEqual(fields);
+    }
   });
 });

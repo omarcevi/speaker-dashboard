@@ -5,7 +5,8 @@ function hash(s: string): number {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
-const pick = <T>(arr: T[], h: number) => arr[h % arr.length];
+// `>>> 0`: callers pass signed shifts of an unsigned hash, which can be negative.
+const pick = <T>(arr: T[], h: number) => arr[(h >>> 0) % arr.length];
 
 export function fakeAiClient(opts: { fail?: Set<string> } = {}): AiClient & { calls: { overview: number; embed: number } } {
   const calls = { overview: 0, embed: 0 };

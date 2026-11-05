@@ -48,6 +48,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // AI overviews and neighbours: written by functions only.
+    match /ai/{id} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    // Embedding vectors: server-only, no client access at all.
+    match /aiVectors/{id} {
+      allow read, write: if false;
+    }
+
     match /reviews/{id} {
       allow read: if isMember();
       allow write: if isAdmin()

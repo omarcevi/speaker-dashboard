@@ -12,8 +12,11 @@ import { runSync } from './sync/runSync.js';
 import { applyImport } from './advocu/applyImport.js';
 import { ImportRefused } from './advocu/parseAdvocu.js';
 import { syncPhotos } from './photos/syncPhotos.js';
+import { refreshAi as runAiRefresh, AiNotFound } from './ai/refreshAi.js';
+import { vertexAiClient, OVERVIEW_MODEL, EMBED_MODEL, type AiClient } from './ai/client.js';
 import type { SubmissionData } from './model.js';
 import { fakeSheet } from './testing/fakeRows.js';
+import { fakeAiClient } from './testing/fakeAiClient.js';
 
 initializeApp();
 
@@ -59,6 +62,14 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
   };
 }
 
+/** Vertex AI in europe-west1, in this project. The emulator gets the fake, so it never calls Vertex. */
+function aiClient(): AiClient {
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return fakeAiClient();
+  return vertexAiClient({
+    project: process.env.GCLOUD_PROJECT!, location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL,
+  });
+}
+
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
   await requireRole(request.auth?.uid, ['member', 'admin']);
   return runSync(getFirestore(), reader(), { photos: photos() });
@@ -85,3 +96,22 @@ export const scheduledSync = onSchedule(
   { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 300, memory: '512MiB' },
   async () => { await runSync(getFirestore(), reader(), { photos: photos() }); },
 );
+
+export const refreshAi = onSchedule(
+  { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 540, memory: '512MiB' },
+  async () => { await runAiRefresh(getFirestore(), aiClient()); },
+);
+
+export const regenerateAi = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
+  await requireRole(request.auth?.uid, ['admin']);
+  const { id } = (request.data ?? {}) as { id?: unknown };
+  if (typeof id !== 'string' || id.trim() === '') {
+    throw new HttpsError('invalid-argument', 'id must be a non-empty string.');
+  }
+  try {
+    return await runAiRefresh(getFirestore(), aiClient(), { onlyId: id, cap: 1 });
+  } catch (e) {
+    if (e instanceof AiNotFound) throw new HttpsError('not-found', e.message);
+    throw e;
+  }
+});
