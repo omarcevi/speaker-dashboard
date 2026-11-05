@@ -43,7 +43,7 @@ Then run each of these in its own terminal:
 npm run build --prefix functions
 npx firebase emulators:start --only auth,firestore,functions,storage --project demo-cfp
 
-# 2. Seed: 12 fake submissions and 3 users
+# 2. Seed: 12 fake Form rows, 3 fake Advocu applications, 3 users and fake AI results
 cd functions && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npx tsx scripts/seed-emulator.ts
 
 # 3. Web app at http://localhost:5173
@@ -93,13 +93,18 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      SYNC_SERVICE_ACCOUNT=cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com
      ```
    - `web/.env.production`: copy the `VITE_FIREBASE_*` values from Firebase console → Project settings → Your apps → Web app (create a web app there if there isn't one), and set `VITE_USE_EMULATORS=false`.
-6. **Deploy:**
+6. **AI assist (Vertex AI).**
+   - Where it runs: overviews and topic names use Gemini 3.8 Flash on the Vertex AI **EU multi-region**, and embeddings use `gemini-embedding-001` in **europe-west1**. Everything stays inside the EU.
+   - Enable the Vertex AI API: `gcloud services enable aiplatform.googleapis.com --project speaker-dashboard-9c149`.
+   - Grant `cfp-sync` the role `roles/aiplatform.user`.
+   - **Check:** confirm that the CFP's personal-data consent covers AI-assisted review with processing in the EU. The current form asks for consent "to review your submission". Consider adding an AI-transparency line to next year's form.
+7. **Deploy:**
    ```bash
    npx firebase login
    npm run build --prefix web && npx firebase deploy --project speaker-dashboard-9c149
    ```
    The first deploy may ask to grant the Storage service a role so `storage.rules` can read user roles from Firestore. Accept it. Cloud Scheduler is enabled automatically for the 15-minute sync.
-7. **Make yourself admin.**
+8. **Make yourself admin.**
    - Open the hosted URL and sign in once. You'll land on the Waiting screen.
    - Then run:
      ```bash
@@ -108,6 +113,22 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      ```
    - No CLI? In the Firebase console, go to Firestore → `users` → your document and set `role` to `admin`.
    - Reload the page. From then on, approve everyone else from the **Team** page.
+
+## AI assist
+
+Three features help reviewers get through the talks faster:
+
+- **Overview.** A short, foldable summary above the talk title in meeting mode. Admins can press **Regenerate** to redo one talk.
+- **Similar talks.** A panel in the talk column that lists related talks.
+- **Topic map.** The **Topic map** page (`/map`) draws every talk as a dot, grouped into clusters by topic. Click a dot to open the talk.
+
+The overview is based only on what the speaker wrote, and AI never decides anything. Scores, comments and Approve / Maybe / Decline stay with the team.
+
+**Privacy.** Overviews and topic names use Gemini 3.8 Flash on the Vertex AI **EU multi-region**, and embeddings use `gemini-embedding-001` in **europe-west1**. Everything stays inside the EU, in the same Google Cloud project. Only the talk text and the speaker's bio, experience, company and job title are sent (plus country, city, session type and participation for Advocu applications). Names, emails, phones, links, photos, logistics and consent are never sent.
+
+**Refresh.** New and edited talks get overviews every 15 minutes. The first full run can take up to about 30 minutes.
+
+Locally, the seed script and the Regenerate button use a fake, deterministic client, so the emulator never calls Vertex AI.
 
 ## Advocu applications
 

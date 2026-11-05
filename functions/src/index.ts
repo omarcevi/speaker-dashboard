@@ -12,8 +12,11 @@ import { runSync } from './sync/runSync.js';
 import { applyImport } from './advocu/applyImport.js';
 import { ImportRefused } from './advocu/parseAdvocu.js';
 import { syncPhotos } from './photos/syncPhotos.js';
+import { refreshAi as runAiRefresh, AiNotFound } from './ai/refreshAi.js';
+import type { AiClient } from './ai/client.js';
 import type { SubmissionData } from './model.js';
 import { fakeSheet } from './testing/fakeRows.js';
+import { fakeAiClient } from './testing/fakeAiClient.js';
 
 initializeApp();
 
@@ -59,6 +62,21 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
   };
 }
 
+/**
+ * Vertex AI in this project, inside the EU: generation on the `eu` multi-region, embeddings in europe-west1.
+ * The emulator gets the fake, so it never calls Vertex. The SDK is imported here, on first use, so the sync and
+ * import functions never load it.
+ */
+async function aiClient(): Promise<AiClient> {
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return fakeAiClient();
+  const project = process.env.GCLOUD_PROJECT;
+  if (!project) throw new Error('GCLOUD_PROJECT not set');
+  const { vertexAiClient, OVERVIEW_MODEL, EMBED_MODEL } = await import('./ai/client.js');
+  return vertexAiClient({
+    project, generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL,
+  });
+}
+
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
   await requireRole(request.auth?.uid, ['member', 'admin']);
   return runSync(getFirestore(), reader(), { photos: photos() });
@@ -85,3 +103,26 @@ export const scheduledSync = onSchedule(
   { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 300, memory: '512MiB' },
   async () => { await runSync(getFirestore(), reader(), { photos: photos() }); },
 );
+
+export const refreshAi = onSchedule(
+  { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 540, memory: '512MiB' },
+  async () => { await runAiRefresh(getFirestore(), await aiClient()); },
+);
+
+export const regenerateAi = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
+  await requireRole(request.auth?.uid, ['admin']);
+  const { id } = (request.data ?? {}) as { id?: unknown };
+  if (typeof id !== 'string' || id.trim() === '') {
+    throw new HttpsError('invalid-argument', 'id must be a non-empty string.');
+  }
+  let result;
+  try {
+    result = await runAiRefresh(getFirestore(), await aiClient(), { onlyId: id, cap: 1 });
+  } catch (e) {
+    if (e instanceof AiNotFound) throw new HttpsError('not-found', e.message);
+    throw e;
+  }
+  // The cause is on ai/{id}.error and in the log; the caller gets a plain message.
+  if (result.failed.includes(id)) throw new HttpsError('internal', 'Could not regenerate this overview — try again later.');
+  return result;
+});

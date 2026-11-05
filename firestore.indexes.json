@@ -1,1 +1,8 @@
-{ "indexes": [], "fieldOverrides": [] }
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "aiVectors", "fieldPath": "vector", "indexes": [] },
+    { "collectionGroup": "ai", "fieldPath": "neighbors", "indexes": [] },
+    { "collectionGroup": "meta", "fieldPath": "points", "indexes": [] }
+  ]
+}

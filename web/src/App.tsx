@@ -8,6 +8,7 @@ import ImportPage from './pages/ImportPage.tsx'
 import ListPage from './pages/ListPage.tsx'
 import LogisticsPage from './pages/LogisticsPage.tsx'
 import MeetingPage from './pages/MeetingPage.tsx'
+import TopicMapPage from './pages/TopicMapPage.tsx'
 import SignInPage from './pages/SignInPage.tsx'
 import TeamPage from './pages/TeamPage.tsx'
 import WaitingPage from './pages/WaitingPage.tsx'
@@ -36,6 +37,7 @@ function Shell() {
           <Route path="/" element={<ListPage />} />
           <Route path="/talk/:id" element={<MeetingPage />} />
           <Route path="/logistics" element={<LogisticsPage />} />
+          <Route path="/map" element={<TopicMapPage />} />
           <Route path="/team" element={me?.role === 'admin' ? <TeamPage /> : <Navigate to="/" replace />} />
           <Route path="/import" element={me?.role === 'admin' ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
