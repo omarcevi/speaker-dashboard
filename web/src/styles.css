@@ -97,3 +97,11 @@ a.chip { color: inherit; text-decoration: none; }
 .team-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #e4e4e7; }
 .team-waiting { border: 2px solid var(--accent); border-radius: 8px; padding: 0.75rem 1rem; background: #fafafa; }
 .team-row .inline-error { flex-basis: 100%; }
+.warning { margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid #d97706; border-radius: 4px; background: #fffbeb; color: #78350f; font-size: 0.875rem; }
+.advocu-details { margin: 0 0 0.5rem; }
+.advocu-details dt { display: inline; }
+.advocu-details dt::after { content: ': '; }
+.advocu-details dd { display: inline; margin: 0; }
+.advocu-details div { margin: 0.1rem 0; }
+
+.count-warning { color: #b45309; font-weight: 700; }

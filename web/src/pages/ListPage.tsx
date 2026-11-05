@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { STATUSES } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import RefreshButton from '../components/RefreshButton.tsx'
+import SourceBadge from '../components/SourceBadge.tsx'
 import StatusChip, { statusLabel } from '../components/StatusChip.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery, type ListFilter, type SortKey } from '../lib/listView.ts'
@@ -17,7 +18,7 @@ const fmt = (n: number | null) => (n === null ? '—' : n.toFixed(1))
 
 export default function ListPage() {
   const { me } = useAuth()
-  const { submissions, reviews, scores, comments, loading } = useData()
+  const { cards, reviews, scores, comments, loading } = useData()
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const [showAll, setShowAll] = useState(loadShowAll)
@@ -28,13 +29,13 @@ export default function ListPage() {
     setParams(writeQuery({ ...filter, ...patch }, nextSort), { replace: true })
 
   const rows = useMemo(
-    () => buildRows(submissions, reviews, scores, comments, me?.uid ?? '', showAll),
-    [submissions, reviews, scores, comments, me?.uid, showAll],
+    () => buildRows(cards, reviews, scores, comments, me?.uid ?? '', showAll),
+    [cards, reviews, scores, comments, me?.uid, showAll],
   )
   const visible = useMemo(() => sortRows(applyFilter(rows, filter), sort), [rows, filter, sort])
-  const counts = useMemo(() => statusCounts(submissions, reviews), [submissions, reviews])
+  const counts = useMemo(() => statusCounts(cards, reviews), [cards, reviews])
 
-  const live = submissions.filter((s) => !s.removedFromSheet)
+  const live = cards.filter((c) => !c.removedFromSheet)
   const topics = distinct(live.map((s) => s.topicGroup))
   const levels = distinct(live.map((s) => s.level))
   const languages = distinct(live.map((s) => s.language))
@@ -115,6 +116,7 @@ export default function ListPage() {
                 <td><StatusChip status={r.status} /></td>
                 <td>
                   {r.sub.title}
+                  <SourceBadge sources={r.sub.sources} />
                   {r.sub.noSession && <span className="tag">No session</span>}
                   {r.sub.removedFromSheet && <span className="tag">Removed</span>}
                 </td>

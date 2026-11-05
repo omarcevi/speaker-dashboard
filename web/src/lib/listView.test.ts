@@ -41,6 +41,24 @@ describe('sortRows', () => {
     expect(ids(sortRows(shuffled, 'date'))).toEqual(['a', 'b', 'c'])
     expect(ids(shuffled)).toEqual(['c', 'a', 'b'])
   })
+  it('date sort interleaves form and advocu by submission time, unknown times last', () => {
+    const mixed = buildRows([
+      fakeSub({ id: 'row-2', row: 2, timestamp: '10/6/2026 9:00:00' }), // 06:00 UTC
+      fakeSub({ id: 'adv-1', row: 0, source: 'advocu', timestamp: '2026-10-06T07:00:00.000Z' }),
+      fakeSub({ id: 'row-3', row: 3, timestamp: 'garbage' }),
+      fakeSub({ id: 'adv-2', row: 0, source: 'advocu', timestamp: '2026-10-01T12:00:00.000Z' }),
+      fakeSub({ id: 'adv-z', row: 0, source: 'advocu', timestamp: '' }),
+      fakeSub({ id: 'row-4', row: 4, timestamp: '10/6/2026 9:30:00' }), // 06:30 UTC
+    ], new Map(), new Map(), new Map(), 'me', false)
+    expect(ids(sortRows(mixed, 'date'))).toEqual(['adv-2', 'row-2', 'row-4', 'adv-1', 'adv-z', 'row-3'])
+  })
+  it('score: unscored rows fall back to submission time, not sheet row', () => {
+    const unscored = buildRows([
+      fakeSub({ id: 'adv-1', row: 0, source: 'advocu', timestamp: '2026-10-06T07:00:00.000Z' }),
+      fakeSub({ id: 'row-2', row: 2, timestamp: '10/6/2026 9:00:00' }), // 06:00 UTC
+    ], new Map(), new Map(), new Map(), 'me', false)
+    expect(ids(sortRows(unscored, 'score'))).toEqual(['row-2', 'adv-1'])
+  })
 })
 
 describe('applyFilter', () => {

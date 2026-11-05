@@ -1,30 +1,37 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
-import type { Comment, Review, Score, Submission, SyncMeta } from '../../../functions/src/model.ts'
+import type { AdvocuMeta, Comment, Review, Score, Submission, SyncMeta } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { db } from '../firebase.ts'
+import { buildCards, type Card } from '../lib/cards.ts'
 
 type CommentWithId = Comment & { id: string }
 
 interface DataValue {
   submissions: Submission[]
+  cards: Card[] // submissions grouped into reviewable talks (see lib/cards.ts)
   reviews: Map<string, Review>
   scores: Map<string, Score[]>
   comments: Map<string, CommentWithId[]>
   sync: SyncMeta | null
+  advocuMeta: AdvocuMeta | null
   loading: boolean
   error: string | null
 }
 
-const empty: DataValue = {
+type Loaded = Omit<DataValue, 'cards' | 'loading'>
+
+const emptyLoaded: Loaded = {
   submissions: [],
   reviews: new Map(),
   scores: new Map(),
   comments: new Map(),
   sync: null,
-  loading: true,
+  advocuMeta: null,
   error: null,
 }
+
+const empty: DataValue = { ...emptyLoaded, cards: [], loading: true }
 
 const DataContext = createContext<DataValue>(empty)
 
@@ -39,14 +46,14 @@ function groupBySubmission<T extends { submissionId: string }>(snap: QuerySnapsh
   return map
 }
 
-const SOURCES = 5
+const SOURCES = 6
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { me } = useAuth()
   const role = me?.role
   const allowed = role === 'member' || role === 'admin'
 
-  const [data, setData] = useState<DataValue>(empty)
+  const [data, setData] = useState<Loaded>(emptyLoaded)
   const [ready, setReady] = useState<ReadonlySet<string>>(new Set())
 
   useEffect(() => {
@@ -82,15 +89,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData((p) => ({ ...p, sync: snap.exists() ? (snap.data() as SyncMeta) : null }))
         markReady('sync')
       }, fail('sync')),
+      onSnapshot(doc(db, 'meta', 'advocu'), (snap) => {
+        setData((p) => ({ ...p, advocuMeta: snap.exists() ? (snap.data() as AdvocuMeta) : null }))
+        markReady('advocu')
+      }, fail('advocu')),
     ]
     return () => {
       unsubs.forEach((u) => u())
-      setData(empty)
+      setData(emptyLoaded)
       setReady(new Set())
     }
   }, [allowed])
 
-  const value = useMemo(() => ({ ...data, loading: allowed && ready.size < SOURCES }), [data, allowed, ready])
+  const { submissions, reviews, scores, comments } = data
+  const cards = useMemo(
+    () => buildCards(submissions, (id) => reviews.has(id) || scores.has(id) || comments.has(id)),
+    [submissions, reviews, scores, comments],
+  )
+  const value = useMemo(() => ({ ...data, cards, loading: allowed && ready.size < SOURCES }), [data, cards, allowed, ready])
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

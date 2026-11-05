@@ -14,6 +14,11 @@ export interface Logistics {
   fromAbroad: string; abroadFrom: string; transport: string; accommodation: string; tour: string;
   outsideIstanbul: string; city: string; otherRequirements: string; tshirt: string; afterParty: string;
 }
+export type Source = 'form' | 'advocu';
+export interface AdvocuDetails {
+  creationDate: string; status: string; eligible: string; country: string; city: string; sessionTypes: string;
+  sessionLength: string; participation: string; languages: string; levels: string; topics: string; cfpTitle: string;
+}
 export interface SubmissionData {
   id: string; row: number; timestamp: string; speakerKey: string;
   firstName: string; lastName: string; email: string; company: string; jobTitle: string; phone: string; bio: string; gde: string;
@@ -24,6 +29,12 @@ export interface SubmissionData {
   coSpeaker: CoSpeaker | null; logistics: Logistics;
   consent: { codeOfConduct: string; recording: string; personalData: string }; // '' = not answered
   contentHash: string;
+  // Both absent on Form documents synced before Advocu imports existed. Stored docs never hold advocu: null;
+  // the web's Card (Submission & { advocu: AdvocuDetails | null }) needs null allowed here to stay a Submission.
+  source?: Source; advocu?: AdvocuDetails | null;
+  // Advocu documents only: the application's current natural id (advocuId(email, creationIso)). Differs from `id` after
+  // a fallback re-match, so later imports still find the document by it.
+  advocuKey?: string;
 }
 export interface Submission extends SubmissionData { removedFromSheet: boolean; syncedAt: Ts }
 export interface Review { status: Status; updatedAt: Ts; updatedBy: string; updatedByName: string } // reviews/{submissionId}
@@ -34,3 +45,13 @@ export interface UserDoc { email: string; name: string; photoURL: string; role: 
 export interface SyncResult { added: number; updated: number; removed: number; total: number; missingColumns: string[] }
 // meta/sync. A failed first sync writes only error + lastErrorAt, so everything else may be absent.
 export interface SyncMeta extends Partial<SyncResult> { lastSyncedAt?: Ts | null; error: string | null; lastErrorAt: Ts | null }
+export interface ImportSummary {
+  mode: 'preview' | 'apply'; total: number; added: number; updated: number; unchanged: number; restored: number;
+  hidden: number; merged: number; speakers: number; rematched: number; cfpTitles: string[];
+  rejected: { row: number; reason: string }[]; warnings: string[];
+}
+// meta/advocu
+export interface AdvocuMeta {
+  lastImportAt?: Ts | null; byName?: string; total?: number; added?: number; updated?: number; hidden?: number;
+  error: string | null; lastErrorAt?: Ts | null;
+}

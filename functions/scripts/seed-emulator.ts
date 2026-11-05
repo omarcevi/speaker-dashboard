@@ -3,6 +3,8 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { applySync } from '../src/sync/applySync.js';
+import { applyImport } from '../src/advocu/applyImport.js';
+import { fakeAdvocuCsv } from '../src/testing/fakeAdvocu.js';
 import { fakeSheet } from '../src/testing/fakeRows.js';
 import type { Role } from '../src/model.js';
 
@@ -22,6 +24,7 @@ const USERS: { uid: string; email: string; name: string; role: Role }[] = [
 
 async function main() {
   await applySync(db, fakeSheet());
+  await applyImport(db, fakeAdvocuCsv(), { apply: true, by: { uid: 'seed', name: 'Seed' } });
   // The app only offers Google sign-in, so seed users as Google-provider accounts; the auth
   // emulator's Google popup then lists them.
   const result = await auth.importUsers(USERS.map(u => ({

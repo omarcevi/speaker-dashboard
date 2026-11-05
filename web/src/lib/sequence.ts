@@ -17,3 +17,10 @@ export function neighbors(order: string[], inFilter: (id: string) => boolean, cu
   for (let i = at + 1; i < order.length; i++) if (inFilter(order[i])) { next = order[i]; break }
   return { prev, next, position, total: passing.length }
 }
+
+// The id a card sits under in a stepping-order snapshot. A card whose primary changed mid-meeting (a new same-title
+// Form row for an unreviewed card) is opened under its new id, so look it up by any of its member ids.
+export function idInOrder(order: string[], id: string, memberIds: readonly string[]): string {
+  if (order.includes(id)) return id
+  return memberIds.find((m) => order.includes(m)) ?? id
+}
