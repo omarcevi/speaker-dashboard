@@ -114,18 +114,21 @@ A **talk group** is every document, from either source and whether or not it has
   - This is the only case where duplicates stay visible. It guarantees that no decision, score or comment is ever hidden.
 
 **The primary.** The merged card's decision, scores, comments and status history are read from, and written to, the primary. The primary is the first of these that applies:
-1. the one document in the group that has review data
-2. the most recent Form document
-3. the oldest Advocu document
+1. the one document in the group that has review data, whether or not it has been removed
+2. the most recent **present** Form document
+3. the most recent **present** Advocu document
+4. if every document has been removed: the most recent Form document, then the most recent Advocu document
+
+*(Claude's call, after the task review. Picking from present documents first means an unreviewed card always shows its primary. So the content doesn't change the moment someone scores it, and review data never lands on a document nobody could see.)*
 
 The primary is stable in practice: once the team acts on a merged card, only the primary has review data, and hidden documents can't gain any. *(Claude's call. It replaces "first in the database", which could hide a decision made on the newer document.)*
 
 **Card content:**
-- **A reviewed version is never silently replaced.** When the primary has review data and is still present, the card shows the primary's own fields. That's what the team actually reviewed.
-- Otherwise, the card shows the most recent present Form document's fields if the group has one. Those are richer: photo, phone, links, logistics.
-- With no Form document, the card shows the Advocu fields.
-- The card adds an "Also on Advocu" block with the Advocu-only details.
-- **Version warning.** Sometimes the primary has review data but the card shows another document's content, because the reviewed version was removed. Then the card shows a visible warning: "Showing a newer <Form|Advocu> version than the one reviewed".
+- **A reviewed version is never silently replaced.** When the primary is present, the card shows the primary's own fields. Given the primary rule, that's the version the team reviewed or is about to review.
+- Only when the primary has been removed does the card fall back to another document: the most recent present Form document, then the most recent present Advocu document, then the primary if every document has been removed.
+- The card adds an "Also on Advocu" block with the Advocu-only details: from the primary if it's an Advocu document, otherwise from the most recent present Advocu document.
+- **Version warning.** When the primary has review data but the card shows another document's content (because the reviewed version was removed), the card shows a visible warning: "Showing a different <Form|Advocu> version than the one reviewed".
+- **Possible-duplicate cards (two or more reviewed members)** link only to the other members that are still present. A removed member behaves like any removed row: hidden unless "Show removed rows" is on.
 - *(Claude's call, after a security review.)* The Form's email field is typed, not verified, so anyone could submit the same email and title. Without these two rules, that would silently swap the content of an approved card.
 
 **Forming and splitting:**
