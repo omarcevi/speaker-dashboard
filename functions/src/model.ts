@@ -55,3 +55,24 @@ export interface AdvocuMeta {
   lastImportAt?: Ts | null; byName?: string; total?: number; added?: number; updated?: number; hidden?: number;
   error: string | null; lastErrorAt?: Ts | null;
 }
+
+// AI assist. Types only: the web bundles this file.
+export type AbstractFlag = 'clear' | 'vague' | 'sales pitch';
+export type SpeakingFlag = 'none' | 'minimal' | 'some' | 'a lot';
+export type StudentFlag = 'yes' | 'no' | 'unclear';
+export interface AiOverview {
+  talk: string; speaker: string;
+  abstract: { value: AbstractFlag; why: string };
+  community: { value: string; why: string };
+  speaking: { value: SpeakingFlag; why: string };
+  student: { value: StudentFlag; why: string };
+  model: string; generatedAt: Ts;
+}
+export interface AiNeighbor { id: string; score: number }
+export interface AiDoc { sourceHash: string; overview: AiOverview | null; neighbors: AiNeighbor[]; error: string | null } // ai/{id}
+export interface TopicMap {
+  points: { id: string; x: number; y: number; cluster: number }[];
+  clusters: { id: number; label: string }[];
+  generatedAt: Ts | null; error: string | null;
+} // meta/topicMap
+export interface AiMeta { lastRunAt: Ts | null; generated: number; pending: number; error: string | null } // meta/ai
