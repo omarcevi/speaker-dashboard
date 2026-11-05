@@ -84,6 +84,7 @@ Some speakers applied in both places, sometimes with the same talk and sometimes
   - It stays the same across re-exports, even if the speaker edits the title or abstract.
   - If two rows in one export produce the same key, refuse the file and name the problem.
 - **Fallback re-match.** Sometimes an incoming application's key doesn't match any stored application, but its email and normalised title match exactly one stored Advocu application that is missing from this export. In that case it is the same application: it keeps the stored id and gets updated. This guards against Advocu changing its date output. *(Claude's call.)*
+- **Stored key.** Every Advocu document also stores its current application key as `advocuKey`. Stored documents are matched by `advocuKey` as well as by id, so a re-matched application is recognised directly on later imports. It isn't re-matched every time, and it keeps surviving title edits. The preview shows the re-matched count.
 - **Speaker grouping:** reuse `speakerKey` (lower-cased trimmed email), so a speaker's Form and Advocu talks group together automatically.
 - **Same-talk match:** same `speakerKey` and the same normalised title.
   - To normalise a title: lowercase it, turn every run of non-letter and non-digit characters into one space, and trim.
@@ -203,9 +204,11 @@ Server-side parsing is required. Parsing and planning live in `functions/` as pu
   - Hidden duplicates are never stepped through.
 - **Status counts and balance:** count each merged card once.
 - **Logistics:**
-  - **Name, email and phone always come from the speaker's approved card.** That is what the team reviewed. A newer Form response never overrides them.
+  - **Name, email and phone always come from the reviewed document of the speaker's approved card**, meaning its primary (`card.id`), even if that document has since been removed. That is what the team reviewed. A newer Form response never overrides them.
   - **Where the logistics fields come from,** in order:
-    1. The latest present Form document of the speaker's that is **the version an approved card displays** (`card.displayId`). The row shows `Form answers: Yes`. A Form document merged invisibly into an approved card (not its display version) doesn't count as approved.
+    1. The latest present Form document of the speaker's that is **the reviewed version an approved card displays** (`card.displayId === doc.id` and `card.displayId === card.id`). The row shows `Form answers: Yes`. Two kinds of Form document don't count as approved:
+       - one merged invisibly into an approved card (not its display version)
+       - one shown only because the reviewed version was removed
     2. Otherwise, the latest present Form document that is **not declined**: the case where an approved Advocu-only speaker filled in the Form afterwards, possibly with a different title. The row shows `Form answers: Unreviewed`, with the tag "From an unreviewed Form response — confirm with the speaker".
     3. Otherwise, the logistics fields are empty. The row shows `Form answers: No`, with the tag "No Form answers yet", so the team knows whom to chase.
   - Co-speaker rows leave the Form answers cell empty.
