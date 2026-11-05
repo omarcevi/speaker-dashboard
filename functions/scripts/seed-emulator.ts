@@ -6,6 +6,8 @@ import { applySync } from '../src/sync/applySync.js';
 import { applyImport } from '../src/advocu/applyImport.js';
 import { fakeAdvocuCsv } from '../src/testing/fakeAdvocu.js';
 import { fakeSheet } from '../src/testing/fakeRows.js';
+import { refreshAi } from '../src/ai/refreshAi.js';
+import { fakeAiClient } from '../src/testing/fakeAiClient.js';
 import type { Role } from '../src/model.js';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
@@ -41,6 +43,9 @@ async function main() {
       email: u.email, name: u.name, photoURL: '', role: u.role, createdAt: Timestamp.now(),
     });
   }
+  // Fake, deterministic AI results (never calls Vertex): overviews, similar talks and the map.
+  const ai = await refreshAi(db, fakeAiClient());
+  console.log(`AI: ${ai.generated} overviews, map ${ai.mapUpdated ? 'updated' : 'unchanged'}`);
   const [subs, users] = await Promise.all([db.collection('submissions').count().get(), db.collection('users').count().get()]);
   console.log(`Seeded: ${subs.data().count} submissions, ${users.data().count} users`);
 }
