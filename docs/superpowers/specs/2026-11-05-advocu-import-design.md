@@ -203,8 +203,13 @@ Server-side parsing is required. Parsing and planning live in `functions/` as pu
   - Hidden duplicates are never stepped through.
 - **Status counts and balance:** count each merged card once.
 - **Logistics:**
-  - A speaker's logistics come from their **most recent Form submission**, whatever that submission's own status. An Advocu speaker who fills in the Form, even with a different title, therefore gets their logistics filled in.
-  - An approved speaker with no Form submission still gets a logistics row, with the logistics fields empty. The page makes that visible ("no Form answers yet") so the team knows whom to chase.
+  - **Name, email and phone always come from the speaker's approved card.** That is what the team reviewed. A newer Form response never overrides them.
+  - **Where the logistics fields come from,** in order:
+    1. The latest present Form document of the speaker's that is **approved**. The row shows `Form answers: Yes`.
+    2. Otherwise, the latest present Form document that is **not declined**: the case where an approved Advocu-only speaker filled in the Form afterwards, possibly with a different title. The row shows `Form answers: Unreviewed`, with the tag "From an unreviewed Form response — confirm with the speaker".
+    3. Otherwise, the logistics fields are empty. The row shows `Form answers: No`, with the tag "No Form answers yet", so the team knows whom to chase.
+  - Co-speaker rows leave the Form answers cell empty.
+  - *(Claude's call, after a security review.)* The Form's email field is typed, not verified, so anyone could submit with an approved speaker's email. This rule keeps the reviewed contact details, and makes unreviewed logistics visible instead of silently trusted. Declined responses are never used.
 - **Firestore rules:**
   - Members can read `meta/advocu`.
   - All writes to `submissions` and `meta` stay server-only.
