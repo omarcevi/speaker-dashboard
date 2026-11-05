@@ -52,6 +52,11 @@ describe('parseAdvocu', () => {
     expect(r.rejected[1]).toMatchObject({ row: 4, reason: expect.stringMatching(/email/i) });
     expect(r.rejected[2]).toMatchObject({ row: 5, reason: expect.stringMatching(/title/i) });
   });
+  it('refuses a file where every row is rejected', () => {
+    const csv = fakeAdvocuCsv([{ 'Creation date': 'yesterday' }, { 'Speaker email': '' }, { 'Proposal title': ' ' }]);
+    expect(() => parseAdvocu(csv)).toThrow(ImportRefused);
+    expect(() => parseAdvocu(csv)).toThrow('No valid applications in the file: every row was rejected.');
+  });
   it('collects distinct call-for-papers titles', () => {
     const r = parseAdvocu(fakeAdvocuCsv([{ 'Call for Papers title': 'CFP A' }, { 'Call for Papers title': 'CFP B' }, { 'Call for Papers title': 'CFP A' }]));
     expect(r.cfpTitles).toEqual(['CFP A', 'CFP B']);

@@ -91,5 +91,6 @@ export function parseAdvocu(text: string): ParsedAdvocu {
     const { id: _id, row: _row, advocuKey: _key, ...content } = data;
     applications.push({ ...data, contentHash: sha1(JSON.stringify(content)) });
   }
+  if (applications.length === 0) throw new ImportRefused('No valid applications in the file: every row was rejected.');
   return { applications, cfpTitles: [...cfpTitles], rejected };
 }
