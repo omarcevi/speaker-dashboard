@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { neighbors } from './sequence.ts'
+import { idInOrder, neighbors } from './sequence.ts'
 
 const order = ['a', 'b', 'c', 'd', 'e']
 const pass = (...ids: string[]) => (id: string) => ids.includes(id)
@@ -19,5 +19,18 @@ describe('neighbors', () => {
   })
   it('handles an id missing from the order', () => {
     expect(neighbors(order, () => true, 'z')).toMatchObject({ prev: null, next: 'a', position: null })
+  })
+})
+
+describe('idInOrder', () => {
+  it('keeps an id that is in the order', () => {
+    expect(idInOrder(order, 'c', ['c', 'x'])).toBe('c')
+  })
+  it('finds a card whose primary changed mid-meeting by any of its member ids', () => {
+    expect(idInOrder(order, 'x', ['x', 'c'])).toBe('c')
+    expect(neighbors(order, () => true, idInOrder(order, 'x', ['x', 'c']))).toEqual({ prev: 'b', next: 'd', position: 3, total: 5 })
+  })
+  it('returns the id when neither it nor any member is in the order', () => {
+    expect(idInOrder(order, 'z', ['z', 'y'])).toBe('z')
   })
 })

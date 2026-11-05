@@ -13,7 +13,7 @@ import { approvedBalance } from '../lib/balance.ts'
 import { cardFor } from '../lib/cards.ts'
 import { applyFilter, buildRows, readQuery, sortRows, writeQuery } from '../lib/listView.ts'
 import { loadShowAll } from '../lib/prefs.ts'
-import { neighbors } from '../lib/sequence.ts'
+import { idInOrder, neighbors } from '../lib/sequence.ts'
 import { otherTalks } from '../lib/speakers.ts'
 import { statusCounts, statusOf } from '../lib/status.ts'
 
@@ -41,8 +41,12 @@ export default function MeetingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, loading])
 
+  // A link to a document that has merged into another card (or whose group changed primary) opens that card.
+  const card = cardFor(cards, id)
+  const cardId = card?.id
+
   const inFilter = (tid: string) => filter.status === 'all' || statusOf(reviews, tid) === filter.status
-  const nav = neighbors(order, inFilter, id)
+  const nav = neighbors(order, inFilter, idInOrder(order, id, card?.memberIds ?? []))
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -60,9 +64,6 @@ export default function MeetingPage() {
   const balance = useMemo(() => approvedBalance(cards, reviews), [cards, reviews])
 
   const backTo = `/${query ? `?${query}` : ''}`
-  // A link to a document that has merged into another card (or whose group changed primary) opens that card.
-  const card = cardFor(cards, id)
-  const cardId = card?.id
   useEffect(() => {
     // Only on complete data: before reviews/scores/comments load, a group's primary may not be the final one.
     if (!loading && cardId !== undefined && cardId !== id) navigate(`/talk/${cardId}${query ? `?${query}` : ''}`, { replace: true })
