@@ -91,8 +91,13 @@ describe('refreshAi', () => {
     const mapBefore = await topicMap();
     expect(naming).toHaveBeenCalledTimes(1);
 
+    const collections = vi.spyOn(db, 'collection');
     const r = await refreshAi(db, client, { now: t2 });
+    const read = collections.mock.calls.map(c => c[0]);
+    collections.mockRestore();
     expect(r).toEqual({ generated: 0, pending: 0, failed: [], deleted: 0, mapUpdated: false });
+    expect(read).toContain('ai');
+    expect(read).not.toContain('aiVectors');
     expect(client.calls).toEqual(calls);
     expect(naming).toHaveBeenCalledTimes(1);
     expect(await topicMap()).toEqual(mapBefore);
@@ -123,6 +128,52 @@ describe('refreshAi', () => {
     for (const other of subs.keys()) {
       if (other !== id) expect((await ai(other))!.overview!.generatedAt).toEqual(ts(t1));
     }
+  });
+
+  it('recomputes when meta/topicMap has no generatedAt', async () => {
+    const client = fakeAiClient();
+    await refreshAi(db, client, { now: t1 });
+    const id = await idOf('Kernel Things');
+    const neighbors = (await ai(id))!.neighbors;
+    expect(neighbors.length).toBeGreaterThan(0);
+    await db.doc(`ai/${id}`).update({ neighbors: [] });
+    await db.doc('meta/topicMap').update({ generatedAt: null });
+    const calls = { ...client.calls };
+
+    const r = await refreshAi(db, client, { now: t2 });
+    expect(r).toMatchObject({ generated: 0, deleted: 0, mapUpdated: true });
+    expect(client.calls).toEqual(calls);
+    expect((await ai(id))!.neighbors).toEqual(neighbors);
+    expect((await topicMap()).generatedAt).toEqual(ts(t2));
+  });
+
+  it('the next run heals a run that stopped before its map step', async () => {
+    const client = fakeAiClient();
+    await refreshAi(db, client, { now: t1 });
+    const subs = [...(await corpus()).keys()];
+    const neighborsAt = async () => Object.fromEntries(await Promise.all(subs.map(async id => [id, (await ai(id))!.neighbors])));
+    const mapBefore = await topicMap();
+    const neighborsBefore = await neighborsAt();
+
+    const edited = fakeSheet();
+    edited[1] = makeRow({ title: 'Fake Talk One', abstract: 'A rewritten abstract about something else.' });
+    await applySync(db, edited);
+    await refreshAi(db, client, { now: t2 });
+    const mapGood = await topicMap();
+    const neighborsGood = await neighborsAt();
+    expect(neighborsGood).not.toEqual(neighborsBefore);
+
+    // Undo the map step only: the regenerated overview and vector stay, as after a kill between the two.
+    await db.doc('meta/topicMap').set(mapBefore);
+    await Promise.all(subs.map(id => db.doc(`ai/${id}`).update({ neighbors: neighborsBefore[id] })));
+    const calls = { ...client.calls };
+
+    const t3 = new Date('2026-11-05T10:30:00Z');
+    const r = await refreshAi(db, client, { now: t3 });
+    expect(r).toMatchObject({ generated: 0, deleted: 0, failed: [], mapUpdated: true });
+    expect(client.calls).toEqual(calls);
+    expect(await neighborsAt()).toEqual(neighborsGood);
+    expect(await topicMap()).toEqual({ ...mapGood, generatedAt: ts(t3) });
   });
 
   it('respects the cap and reports pending', async () => {

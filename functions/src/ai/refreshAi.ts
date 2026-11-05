@@ -16,8 +16,6 @@ export interface RefreshAiResult { generated: number; pending: number; failed: s
 /** `onlyId` names no present submission with a title. Thrown before anything is read from the model or written. */
 export class AiNotFound extends Error {}
 
-type Vector = { vector: number[]; sourceHash: string };
-
 const short = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, MAX_ERROR);
 const inCorpus = (d: FirebaseFirestore.DocumentData) =>
   d.removedFromSheet !== true && typeof d.title === 'string' && d.title.trim() !== '';
@@ -50,25 +48,22 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
   const cap = opts.cap ?? AI_CAP;
   const at = Timestamp.fromDate(opts.now ?? new Date());
 
-  const [subSnap, aiSnap, vecSnap, mapSnap] = await Promise.all([
+  // aiVectors is read only when the map is recomputed: ai/{id} and aiVectors/{id} are always written together.
+  const [subSnap, aiSnap, mapSnap] = await Promise.all([
     db.collection('submissions').get(),
     db.collection('ai').get(),
-    db.collection('aiVectors').get(),
     db.doc('meta/topicMap').get(),
   ]);
   const present = new Map<string, SubmissionData>();
   for (const d of subSnap.docs) if (inCorpus(d.data())) present.set(d.id, d.data() as SubmissionData);
   const ais = new Map(aiSnap.docs.map(d => [d.id, d.data() as AiDoc]));
-  const vectors = new Map(vecSnap.docs.map(d => [d.id, d.data() as Vector]));
 
   if (opts.onlyId !== undefined && !present.has(opts.onlyId)) {
     throw new AiNotFound('No present submission with a title has that id.');
   }
 
-  // Due: no ai doc or vector yet, or either was made from other text. Docs never generated go first.
-  const isDue = (id: string, s: SubmissionData) =>
-    ais.get(id)?.sourceHash !== s.contentHash || vectors.get(id)?.sourceHash !== s.contentHash;
-  const normallyDue = [...present].filter(([id, s]) => isDue(id, s)).map(([id]) => id)
+  // Due: no ai doc yet, or it was made from other text. Docs never generated go first.
+  const normallyDue = [...present].filter(([id, s]) => ais.get(id)?.sourceHash !== s.contentHash).map(([id]) => id)
     .sort((a, b) => Number(ais.has(a)) - Number(ais.has(b)) || (a < b ? -1 : a > b ? 1 : 0));
   const todo = (opts.onlyId !== undefined ? [opts.onlyId] : normallyDue).slice(0, Math.max(0, cap));
 
@@ -94,7 +89,6 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
       batch.set(db.doc(`aiVectors/${id}`), { vector, sourceHash: s.contentHash });
       await batch.commit();
       ais.set(id, doc);
-      vectors.set(id, { vector, sourceHash: s.contentHash });
       generated.add(id);
     } catch (e) {
       const message = short(e);
@@ -115,19 +109,28 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
   });
 
   // 2. Delete results for documents that are removed, untitled or gone.
-  const stale = [...new Set([...ais.keys(), ...vectors.keys()])].filter(id => !present.has(id));
-  await commitAll(db, stale.flatMap(id => [
-    (b: FirebaseFirestore.WriteBatch) => b.delete(db.doc(`ai/${id}`)),
-    (b: FirebaseFirestore.WriteBatch) => b.delete(db.doc(`aiVectors/${id}`)),
-  ]));
-  stale.forEach(id => { ais.delete(id); vectors.delete(id); });
+  const stale = [...ais.keys()].filter(id => !present.has(id));
+  await deleteResults(db, stale);
+  stale.forEach(id => ais.delete(id));
+  let deleted = stale.length;
 
-  // 3. Neighbours and the map, when the set of vectors changed or the last naming failed.
+  // 3. Neighbours and the map. meta/topicMap is written last, so everything here is judged against it, never against
+  // this run alone: a run stopped before its map step leaves overviews newer than the map, and the next run recomputes.
   const prevMap = mapSnap.data() as TopicMap | undefined;
-  const mapIds = [...vectors.keys()];
-  const mapUpdated = generated.size > 0 || stale.length > 0 || !prevMap || prevMap.error != null ||
-    !sameIds(mapIds, prevMap.points.map(p => p.id));
-  if (mapUpdated) await writeMap(db, client, present, ais, new Map(mapIds.map(id => [id, vectors.get(id)!.vector])), at);
+  const prevAt = prevMap?.generatedAt?.toMillis() ?? null;
+  const mapIds = [...ais].filter(([id, d]) => present.has(id) && d.overview).map(([id]) => id);
+  const newest = Math.max(-Infinity, ...mapIds.map(id => ais.get(id)!.overview!.generatedAt.toMillis()));
+  const mapUpdated = generated.size > 0 || stale.length > 0 || !prevMap || prevAt === null || prevMap.error != null ||
+    newest > prevAt || !sameIds(mapIds, prevMap.points.map(p => p.id));
+  if (mapUpdated) {
+    const vecSnap = await db.collection('aiVectors').get();
+    const orphans = vecSnap.docs.map(d => d.id).filter(id => !present.has(id));
+    await deleteResults(db, orphans);
+    deleted += orphans.length;
+    const vectors = new Map(vecSnap.docs.map(d => [d.id, d.get('vector') as number[]]));
+    const vecs = new Map(mapIds.filter(id => vectors.has(id)).map(id => [id, vectors.get(id)!]));
+    await writeMap(db, client, present, ais, vecs, at);
+  }
 
   // 4. Run summary. Pending is the normal backlog, also after an onlyId run.
   const pending = normallyDue.filter(id => !generated.has(id)).length;
@@ -135,9 +138,16 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
   const meta: AiMeta = { lastRunAt: at, generated: generated.size, pending, error: firstError };
   await db.doc('meta/ai').set(meta);
 
-  const result = { generated: generated.size, pending, failed: todo.filter(id => errors.has(id)), deleted: stale.length, mapUpdated };
+  const result = { generated: generated.size, pending, failed: todo.filter(id => errors.has(id)), deleted, mapUpdated };
   console.log(`AI refresh: generated=${result.generated} pending=${pending} failed=[${result.failed.join(',')}] deleted=${result.deleted} mapUpdated=${mapUpdated}`);
   return result;
+}
+
+async function deleteResults(db: Firestore, ids: string[]) {
+  await commitAll(db, ids.flatMap(id => [
+    (b: FirebaseFirestore.WriteBatch) => b.delete(db.doc(`ai/${id}`)),
+    (b: FirebaseFirestore.WriteBatch) => b.delete(db.doc(`aiVectors/${id}`)),
+  ]));
 }
 
 async function writeMap(
