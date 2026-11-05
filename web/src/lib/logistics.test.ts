@@ -74,6 +74,24 @@ describe('logisticsRows', () => {
     ]
     expect(rowsFor(subs, approved('adv'))[0]).toMatchObject({ tshirt: 'XXL', formAnswers: 'unreviewed' })
   })
+  it('a removed approved primary keeps its contact details; the form doc shown in its place is unreviewed', () => {
+    const subs = [
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu', title: 'Same', firstName: 'Ada', phone: '111', email: 'ada@example.com', removedFromSheet: true }),
+      fakeSub({ id: 'f9', row: 9, speakerKey: 's1', title: 'Same', firstName: 'Mallory', phone: '999', email: 'ADA@example.com', logistics: L('SPOOF') }),
+    ]
+    expect(rowsFor(subs, approved('adv'))[0]).toMatchObject({
+      name: 'Ada Lovelace', email: 'ada@example.com', phone: '111', tshirt: 'SPOOF', formAnswers: 'unreviewed',
+    })
+  })
+  it('a hidden merged member of a declined card is never used', () => {
+    const subs = [
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu', title: 'Kept' }),
+      fakeSub({ id: 'f3', row: 3, speakerKey: 's1', title: 'Gone', logistics: L('M') }),
+      fakeSub({ id: 'f9', row: 9, speakerKey: 's1', title: 'Gone', logistics: L('XXL') }),
+    ]
+    const reviews = new Map([...approved('adv'), ['f3', fakeReview('declined')] as const])
+    expect(rowsFor(subs, reviews)[0]).toMatchObject({ tshirt: '', formAnswers: 'no' })
+  })
   it('ignores declined form docs', () => {
     const subs = [
       fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu' }),

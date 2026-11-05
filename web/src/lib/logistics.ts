@@ -35,8 +35,10 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
   const bySpeaker = new Map<string, Card[]>()
   for (const c of approved) bySpeaker.set(c.speakerKey, [...(bySpeaker.get(c.speakerKey) ?? []), c])
 
-  // Form emails are typed, not verified, so contact details always come from the approved card. Logistics come
-  // from the speaker's latest present Form doc: an approved one first, else one not declined (flagged unreviewed).
+  // Form emails are typed, not verified, so contact details always come from the reviewed doc: the primary of the
+  // speaker's latest approved card, even if it was removed since. Logistics come from the speaker's latest present
+  // Form doc: an approved one first, else one not declined (flagged unreviewed).
+  const subById = new Map(subs.map((s) => [s.id, s]))
   const formDocs = new Map<string, Submission[]>()
   for (const s of subs) {
     if (s.removedFromSheet || (s.source ?? 'form') === 'advocu') continue
@@ -44,18 +46,20 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
   }
   const latestWhere = (docs: Submission[], ok: (s: Submission) => boolean) =>
     docs.filter(ok).sort((a, b) => a.row - b.row).at(-1)
-  // 'approved' only for the doc an approved card displays; a hidden merged member could be a spoofed response.
+  // 'approved' only for the reviewed doc an approved card displays. A hidden merged member, or a doc shown only because
+  // the reviewed one was removed, could be a spoofed response.
   const docState = (doc: Submission): 'approved' | 'declined' | 'other' => {
     const card = cardFor(cards, doc.id)
     const status = statusOf(reviews, card ? card.id : doc.id)
     if (status === 'declined') return 'declined'
-    return card && card.displayId === doc.id && status === 'approved' ? 'approved' : 'other'
+    return card && card.displayId === doc.id && card.displayId === card.id && status === 'approved' ? 'approved' : 'other'
   }
 
   const rows: LogisticsRow[] = []
   for (const [key, group] of bySpeaker) {
     const talks = [...group].sort((a, b) => a.row - b.row)
-    const who = talks[talks.length - 1]
+    const latest = talks[talks.length - 1]
+    const who = subById.get(latest.id) ?? latest
     const docs = formDocs.get(key) ?? []
     const approvedDoc = latestWhere(docs, (d) => docState(d) === 'approved')
     const otherDoc = approvedDoc ? undefined : latestWhere(docs, (d) => docState(d) !== 'declined')
