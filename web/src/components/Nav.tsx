@@ -9,6 +9,7 @@ export default function Nav() {
     <>
     <nav className="nav">
       <NavLink to="/" end>Submissions</NavLink>
+      <NavLink to="/map">Topic map</NavLink>
       <NavLink to="/logistics">Logistics</NavLink>
       {me?.role === 'admin' && <NavLink to="/team">Team</NavLink>}
       {me?.role === 'admin' && <NavLink to="/import">Import</NavLink>}
