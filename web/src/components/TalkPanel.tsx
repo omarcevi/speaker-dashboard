@@ -52,7 +52,7 @@ export default function TalkPanel({ sub, status, comments, me, titleOf }: {
       </div>
       {warning && <p className="warning" role="status">{warning}</p>}
       <StatusHistory key={`history-${sub.id}`} submissionId={sub.id} />
-      <OverviewBox card={sub} />
+      <OverviewBox key={`overview-${sub.id}`} card={sub} />
       <h2 className="talk-title">{sub.title}</h2>
       <Section label="Abstract" text={sub.abstract} />
       {sub.advocu && <AdvocuDetails advocu={sub.advocu} sources={sub.sources} />}

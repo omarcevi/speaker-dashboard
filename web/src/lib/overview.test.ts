@@ -18,7 +18,10 @@ describe('overviewState', () => {
     expect(overviewState(card(), new Map()).kind).toBe('missing')
   })
   it('is missing for a placeholder with no overview, even if the hash differs', () => {
-    expect(overviewState(card(), new Map([['a', aiDoc({ overview: null, sourceHash: '', error: 'x' })]])).kind).toBe('missing')
+    const placeholder = aiDoc({ overview: null, sourceHash: '', error: 'x' })
+    const st = overviewState(card(), new Map([['a', placeholder]]))
+    expect(st.kind).toBe('missing')
+    expect(st.kind === 'missing' && st.doc).toBe(placeholder)
   })
   it('is updating when hashes differ', () => {
     expect(overviewState(card('h2'), new Map([['a', aiDoc()]])).kind).toBe('updating')

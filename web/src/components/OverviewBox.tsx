@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { httpsCallable } from 'firebase/functions'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
@@ -13,8 +13,13 @@ export default function OverviewBox({ card }: { card: Card }) {
   const [open, setOpen] = useState(loadOverviewOpen)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const state = overviewState(card, ai)
-  const doc = state.kind === 'missing' ? ai.get(card.displayId) : state.doc
+  const doc = state.doc
   const o = doc?.overview ?? null
 
   async function regenerate() {
@@ -23,9 +28,11 @@ export default function OverviewBox({ card }: { card: Card }) {
     try {
       await httpsCallable(functions, 'regenerateAi')({ id: card.displayId })
     } catch (e) {
-      setFailure(e instanceof Error ? e.message : String(e))
+      if (!mounted.current) return
+      const msg = e instanceof Error ? e.message : String(e)
+      setFailure(msg === 'internal' ? 'Could not regenerate this overview — try again later.' : msg)
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
