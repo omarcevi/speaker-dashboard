@@ -57,12 +57,12 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
   };
 }
 
-export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300 }, async request => {
+export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
   await requireRole(request.auth?.uid, ['member', 'admin']);
   return runSync(getFirestore(), reader(), { photos: photos() });
 });
 
 export const scheduledSync = onSchedule(
-  { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 300 },
+  { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 300, memory: '512MiB' },
   async () => { await runSync(getFirestore(), reader(), { photos: photos() }); },
 );
