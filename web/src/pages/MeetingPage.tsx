@@ -99,7 +99,7 @@ export default function MeetingPage() {
       </div>
       <BalanceRow balance={balance} />
       <div className="meeting-cols">
-        <TalkPanel sub={card} status={statusOf(reviews, card.id)} comments={comments.get(card.id) ?? []} me={actor} />
+        <TalkPanel sub={card} status={statusOf(reviews, card.id)} comments={comments.get(card.id) ?? []} me={actor} titleOf={(id) => cardFor(cards, id)?.title} />
         <SpeakerPanel sub={card} others={otherTalks(cards, card)} reviews={reviews} query={query} />
       </div>
       <div className="meeting-bottom">

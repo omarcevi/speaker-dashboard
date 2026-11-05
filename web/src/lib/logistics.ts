@@ -1,5 +1,5 @@
 import type { Review, Submission } from '../../../functions/src/model.ts'
-import type { Card } from './cards.ts'
+import { cardFor, type Card } from './cards.ts'
 import { statusOf } from './status.ts'
 
 export interface LogisticsRow {
@@ -9,7 +9,7 @@ export interface LogisticsRow {
   phone: string
   talks: string
   // null for co-speaker rows: co-speakers never fill in logistics
-  hasFormAnswers: boolean | null
+  formAnswers: 'yes' | 'unreviewed' | 'no' | null
   fromAbroad: string
   abroadFrom: string
   outsideIstanbul: string
@@ -35,26 +35,35 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
   const bySpeaker = new Map<string, Card[]>()
   for (const c of approved) bySpeaker.set(c.speakerKey, [...(bySpeaker.get(c.speakerKey) ?? []), c])
 
-  // Logistics come from the speaker's latest present Form submission, whatever its status.
-  const latestForm = new Map<string, Submission>()
+  // Form emails are typed, not verified, so contact details always come from the approved card. Logistics come
+  // from the speaker's latest present Form doc: an approved one first, else one not declined (flagged unreviewed).
+  const formDocs = new Map<string, Submission[]>()
   for (const s of subs) {
     if (s.removedFromSheet || (s.source ?? 'form') === 'advocu') continue
-    const cur = latestForm.get(s.speakerKey)
-    if (!cur || s.row > cur.row) latestForm.set(s.speakerKey, s)
+    formDocs.set(s.speakerKey, [...(formDocs.get(s.speakerKey) ?? []), s])
+  }
+  const latestWhere = (docs: Submission[], ok: (s: Submission) => boolean) =>
+    docs.filter(ok).sort((a, b) => a.row - b.row).at(-1)
+  const cardStatus = (doc: Submission) => {
+    const card = cardFor(cards, doc.id)
+    return statusOf(reviews, card ? card.id : doc.id)
   }
 
   const rows: LogisticsRow[] = []
   for (const [key, group] of bySpeaker) {
     const talks = [...group].sort((a, b) => a.row - b.row)
-    const form = latestForm.get(key)
-    const who = form ?? talks[talks.length - 1]
+    const who = talks[talks.length - 1]
+    const docs = formDocs.get(key) ?? []
+    const approvedDoc = latestWhere(docs, (d) => cardStatus(d) === 'approved')
+    const otherDoc = approvedDoc ? undefined : latestWhere(docs, (d) => cardStatus(d) !== 'declined')
+    const form = approvedDoc ?? otherDoc
     rows.push({
       kind: 'speaker',
       name: fullName(who.firstName, who.lastName),
       email: who.email,
       phone: who.phone,
       talks: talks.map((t) => t.title).join(' | '),
-      hasFormAnswers: form !== undefined,
+      formAnswers: approvedDoc ? 'yes' : otherDoc ? 'unreviewed' : 'no',
       ...(form ? form.logistics : EMPTY_LOGISTICS),
       anythingElse: form ? form.anythingElse : '',
     })
@@ -67,7 +76,7 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
       email: s.coSpeaker.email,
       phone: s.coSpeaker.phone,
       talks: s.title,
-      hasFormAnswers: null,
+      formAnswers: null,
       ...EMPTY_LOGISTICS,
       anythingElse: '',
     })
@@ -75,6 +84,7 @@ export function logisticsRows(cards: Card[], subs: Submission[], reviews: Map<st
   return rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
 }
 
+const FORM_ANSWERS_CSV = { yes: 'Yes', unreviewed: 'Unreviewed', no: 'No', none: '' }
 const PHONE_COL = 3
 const HEADER = [
   'Type', 'Name', 'Email', 'Phone', 'Talks', 'Form answers', 'From abroad', 'Coming from (abroad)', 'Outside Istanbul', 'City',
@@ -94,7 +104,7 @@ export function toCsv(rows: LogisticsRow[]): string {
   const lines = [HEADER.map((h) => field(h)).join(',')]
   for (const r of rows) {
     const cells = [
-      r.kind, r.name, r.email, r.phone, r.talks, r.hasFormAnswers === null ? '' : r.hasFormAnswers ? 'Yes' : 'No', r.fromAbroad, r.abroadFrom, r.outsideIstanbul, r.city,
+      r.kind, r.name, r.email, r.phone, r.talks, FORM_ANSWERS_CSV[r.formAnswers ?? 'none'], r.fromAbroad, r.abroadFrom, r.outsideIstanbul, r.city,
       r.transport, r.accommodation, r.tour, r.afterParty, r.tshirt, r.otherRequirements, r.anythingElse,
     ]
     lines.push(cells.map((c, i) => field(c, i === PHONE_COL)).join(','))

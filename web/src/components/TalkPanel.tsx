@@ -3,6 +3,7 @@ import type { Status } from '../../../functions/src/model.ts'
 import type { Comment } from '../../../functions/src/model.ts'
 import type { Actor } from '../data/actions.ts'
 import type { Card } from '../lib/cards.ts'
+import { versionWarning } from '../lib/versionWarning.ts'
 import AdvocuDetails from './AdvocuDetails.tsx'
 import SourceBadge from './SourceBadge.tsx'
 import Comments from './Comments.tsx'
@@ -19,18 +20,14 @@ function Section({ label, text }: { label: string; text: string }) {
   )
 }
 
-// The card shows a different document than the one reviewed (the reviewed primary was removed).
-export function versionWarning(card: Card): string | null {
-  if (card.displayId === card.id) return null
-  return `Showing a different ${card.source === 'advocu' ? 'Advocu' : 'Form'} version than the one reviewed`
-}
-
-export default function TalkPanel({ sub, status, comments, me }: {
+export default function TalkPanel({ sub, status, comments, me, titleOf }: {
   sub: Card
   status: Status
   comments: (Comment & { id: string })[]
   me: Actor
+  titleOf: (id: string) => string | undefined
 }) {
+  const warning = versionWarning(sub)
   const co = sub.coSpeaker
   return (
     <section className="talk-panel">
@@ -47,12 +44,12 @@ export default function TalkPanel({ sub, status, comments, me }: {
           <span className="tag">
             Possible duplicate of{' '}
             {sub.possibleDuplicateOf.map((id, i) => (
-              <span key={id}>{i > 0 && ', '}<Link to={`/talk/${id}`}>{id}</Link></span>
+              <span key={id}>{i > 0 && ', '}<Link to={`/talk/${id}`}>{titleOf(id) ?? id}</Link></span>
             ))}
           </span>
         )}
       </div>
-      {versionWarning(sub) && <p className="warning" role="alert">{versionWarning(sub)}</p>}
+      {warning && <p className="warning" role="status">{warning}</p>}
       <StatusHistory key={`history-${sub.id}`} submissionId={sub.id} />
       <h2 className="talk-title">{sub.title}</h2>
       <Section label="Abstract" text={sub.abstract} />

@@ -38,7 +38,9 @@ export default function LogisticsPage() {
                 <tr key={i}>
                   <td>{r.name}{r.kind === 'co-speaker' && <span className="tag">Co-speaker</span>}</td>
                   <td>{r.email}</td><td>{r.phone}</td><td>{r.talks}</td>
-                  <td>{r.hasFormAnswers === null ? '' : r.hasFormAnswers ? 'Yes' : <span className="tag">No Form answers yet</span>}</td>
+                  <td>{r.formAnswers === 'yes' && 'Yes'}
+                    {r.formAnswers === 'unreviewed' && <span className="tag">From an unreviewed Form response — confirm with the speaker</span>}
+                    {r.formAnswers === 'no' && <span className="tag">No Form answers yet</span>}</td>
                   <td>{r.fromAbroad}</td><td>{r.abroadFrom}</td>
                   <td>{r.outsideIstanbul}</td><td>{r.city}</td><td>{r.transport}</td><td>{r.accommodation}</td><td>{r.tour}</td>
                   <td>{r.afterParty}</td><td>{r.tshirt}</td><td>{r.otherRequirements}</td><td>{r.anythingElse}</td>

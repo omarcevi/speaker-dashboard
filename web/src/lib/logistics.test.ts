@@ -38,27 +38,48 @@ describe('logisticsRows', () => {
     const subs = [fakeSub({ id: 'a', row: 2, removedFromSheet: true })]
     expect(rowsFor(subs, approved('a'))).toEqual([])
   })
-  it('takes logistics from the speaker’s latest form submission whatever its status', () => {
+  const L = (tshirt: string) => ({ ...fakeSub({ id: 'x', row: 1 }).logistics, tshirt })
+  it('a spoofed pending form doc does not change the approved speaker’s name or phone', () => {
     const subs = [
-      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu', title: 'Advocu talk', firstName: 'Ada' }),
-      fakeSub({ id: 'frm', row: 5, speakerKey: 's1', title: 'Other form talk', firstName: 'Adaline', logistics: { ...fakeSub({ id: 'x', row: 1 }).logistics, tshirt: 'L' } }),
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu', firstName: 'Ada', phone: '111' }),
+      fakeSub({ id: 'frm', row: 5, speakerKey: 's1', title: 'Other', firstName: 'Mallory', phone: '999' }),
     ]
-    const rows = rowsFor(subs, approved('adv'))
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ kind: 'speaker', tshirt: 'L', hasFormAnswers: true, name: 'Adaline Lovelace', talks: 'Advocu talk' })
+    expect(rowsFor(subs, approved('adv'))[0]).toMatchObject({ name: 'Ada Lovelace', phone: '111' })
   })
-  it('approved advocu-only speaker gets a row with empty logistics and hasFormAnswers false', () => {
+  it('uses a pending form doc’s logistics and marks them unreviewed', () => {
+    const subs = [
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu' }),
+      fakeSub({ id: 'frm', row: 5, speakerKey: 's1', title: 'Other', logistics: L('L') }),
+    ]
+    expect(rowsFor(subs, approved('adv'))[0]).toMatchObject({ tshirt: 'L', formAnswers: 'unreviewed' })
+  })
+  it('prefers an approved form doc’s logistics over a newer pending one', () => {
+    const subs = [
+      fakeSub({ id: 'a', row: 2, speakerKey: 's1', logistics: L('M') }),
+      fakeSub({ id: 'p', row: 9, speakerKey: 's1', title: 'Newer', logistics: L('XL') }),
+    ]
+    expect(rowsFor(subs, approved('a'))[0]).toMatchObject({ tshirt: 'M', formAnswers: 'yes' })
+  })
+  it('ignores declined form docs', () => {
+    const subs = [
+      fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu' }),
+      fakeSub({ id: 'd', row: 5, speakerKey: 's1', title: 'No', logistics: L('S') }),
+    ]
+    const reviews = new Map([...approved('adv'), ['d', fakeReview('declined')] as const])
+    expect(rowsFor(subs, reviews)[0]).toMatchObject({ tshirt: '', formAnswers: 'no' })
+  })
+  it('approved advocu-only speaker gets a row with empty logistics and formAnswers no', () => {
     const subs = [fakeSub({ id: 'adv', row: 0, source: 'advocu' })]
     const rows = rowsFor(subs, approved('adv'))
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ kind: 'speaker', hasFormAnswers: false, tshirt: '', city: '', email: 'adv@example.com' })
+    expect(rows[0]).toMatchObject({ kind: 'speaker', formAnswers: 'no', tshirt: '', city: '', email: 'adv@example.com' })
   })
   it('ignores removed form submissions for logistics', () => {
     const subs = [
       fakeSub({ id: 'adv', row: 0, speakerKey: 's1', source: 'advocu' }),
       fakeSub({ id: 'frm', row: 5, speakerKey: 's1', title: 'Gone', removedFromSheet: true }),
     ]
-    expect(rowsFor(subs, approved('adv'))[0].hasFormAnswers).toBe(false)
+    expect(rowsFor(subs, approved('adv'))[0].formAnswers).toBe('no')
   })
   it('a merged card counts once in talks', () => {
     const subs = [
@@ -67,12 +88,12 @@ describe('logisticsRows', () => {
     ]
     const rows = rowsFor(subs, approved('f'))
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ talks: 'Same', hasFormAnswers: true })
+    expect(rows[0]).toMatchObject({ talks: 'Same', formAnswers: 'yes' })
   })
-  it('co-speaker rows have hasFormAnswers null', () => {
+  it('co-speaker rows have formAnswers null', () => {
     const coSpeaker = { firstName: 'R', lastName: 'K', email: 'r@example.com', phone: '1' } as never
     const co = rowsFor([fakeSub({ id: 'a', row: 2, coSpeaker })], approved('a')).find((r) => r.kind === 'co-speaker')!
-    expect(co.hasFormAnswers).toBeNull()
+    expect(co.formAnswers).toBeNull()
   })
   it('does not mutate input', () => {
     const subs = [fakeSub({ id: 'b', row: 3, speakerKey: 's' }), fakeSub({ id: 'a', row: 2, speakerKey: 's' })]
@@ -86,7 +107,7 @@ describe('toCsv', () => {
   const row = (over: Partial<LogisticsRow> = {}): LogisticsRow => ({
     kind: 'speaker', name: 'Ada', email: 'a@x.com', phone: '', talks: 'T', fromAbroad: '', abroadFrom: '',
     outsideIstanbul: '', city: '', transport: '', accommodation: '', tour: '', afterParty: '', tshirt: '',
-    otherRequirements: '', anythingElse: '', hasFormAnswers: true, ...over,
+    otherRequirements: '', anythingElse: '', formAnswers: 'yes', ...over,
   })
   it('starts with BOM, has header and 2 lines for 1 row', () => {
     const csv = toCsv([row()])
@@ -105,9 +126,10 @@ describe('toCsv', () => {
     expect(toCsv([row({ city: 'Python; Go' })])).toContain(',"Python; Go",')
   })
   it('writes Yes, No or empty in the Form answers column', () => {
-    expect(toCsv([row({ hasFormAnswers: true })]).split('\r\n')[1]).toContain('"T","Yes",')
-    expect(toCsv([row({ hasFormAnswers: false })]).split('\r\n')[1]).toContain('"T","No",')
-    expect(toCsv([row({ hasFormAnswers: null })]).split('\r\n')[1]).toContain('"T","",')
+    expect(toCsv([row({ formAnswers: 'yes' })]).split('\r\n')[1]).toContain('"T","Yes",')
+    expect(toCsv([row({ formAnswers: 'unreviewed' })]).split('\r\n')[1]).toContain('"T","Unreviewed",')
+    expect(toCsv([row({ formAnswers: 'no' })]).split('\r\n')[1]).toContain('"T","No",')
+    expect(toCsv([row({ formAnswers: null })]).split('\r\n')[1]).toContain('"T","",')
   })
   it('keeps Turkish characters', () => {
     const csv = toCsv([row({ city: 'Türkiye', abroadFrom: 'İstanbul' })])
