@@ -14,8 +14,8 @@ export async function applySync(db: Firestore, values: string[][], now?: Date): 
   }
   const at = Timestamp.fromDate(now ?? new Date());
 
-  const snap = await db.collection('submissions').select('contentHash', 'removedFromSheet').get();
-  const existing = snap.docs.map(d => ({
+  const snap = await db.collection('submissions').select('source', 'contentHash', 'removedFromSheet').get();
+  const existing = snap.docs.filter(d => d.get('source') !== 'advocu').map(d => ({
     id: d.id,
     contentHash: d.get('contentHash') as string,
     removedFromSheet: d.get('removedFromSheet') === true,

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { applySync } from '../src/sync/applySync.js';
+import { applyImport } from '../src/advocu/applyImport.js';
+import { fakeAdvocuCsv } from '../src/testing/fakeAdvocu.js';
 import { HEADER_ROW, makeRow, fakeSheet } from '../src/testing/fakeRows.js';
 
 const db = getFirestore(initializeApp({ projectId: 'demo-cfp' }));
@@ -48,5 +50,15 @@ describe('applySync', () => {
     await expect(applySync(db, [noEmail, row])).rejects.toThrow('Required columns missing from the sheet: email');
     expect((await db.collection('submissions').get()).size).toBe(0);
     expect((await db.doc('meta/sync').get()).exists).toBe(false);
+  });
+
+  it('sheet sync ignores advocu docs', async () => {
+    await applyImport(db, fakeAdvocuCsv(), { apply: true, by: { uid: 'adm1', name: 'Adele' } });
+    await applySync(db, fakeSheet());
+    const r = await applySync(db, fakeSheet());
+    expect(r.removed).toBe(0);
+    const docs = (await db.collection('submissions').where('source', '==', 'advocu').get()).docs;
+    expect(docs.length).toBeGreaterThan(0);
+    docs.forEach(d => expect(d.get('removedFromSheet')).toBe(false));
   });
 });

@@ -39,6 +39,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users/adm1'), userDoc('admin', 'adm1'));
     await setDoc(doc(db, 'submissions/row-2'), { title: 'T' });
     await setDoc(doc(db, 'meta/sync'), { at: 1 });
+    await setDoc(doc(db, 'meta/advocu'), { total: 1 });
     await setDoc(doc(db, 'scores/row-2__adm1'), {
       submissionId: 'row-2', uid: 'adm1', name: 'Adele', value: 5, updatedAt: new Date(),
     });
@@ -81,6 +82,9 @@ describe('waiting user', () => {
   });
   it('cannot list comments', async () => {
     await assertFails(getDocs(collection(as('wait1'), 'comments')));
+  });
+  it('cannot read meta/advocu', async () => {
+    await assertFails(getDoc(doc(as('wait1'), 'meta/advocu')));
   });
   it('cannot read meta/sync', async () => {
     await assertFails(getDoc(doc(as('wait1'), 'meta/sync')));
@@ -132,6 +136,9 @@ describe('member', () => {
   });
   it('cannot write reviews/row-2', async () => {
     await assertFails(setDoc(doc(as('mem1'), 'reviews/row-2'), { status: 'approved' }));
+  });
+  it('can read meta/advocu', async () => {
+    await assertSucceeds(getDoc(doc(as('mem1'), 'meta/advocu')));
   });
   it('cannot write meta/sync', async () => {
     await assertFails(setDoc(doc(as('mem1'), 'meta/sync'), { at: 2 }));
@@ -231,6 +238,12 @@ describe('admin', () => {
   });
   it('member cannot create a history entry', async () => {
     await assertFails(setDoc(doc(as('mem1'), 'reviews/row-2/history/h2'), hist()));
+  });
+});
+
+describe('admin meta', () => {
+  it('cannot write meta/advocu', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/advocu'), { total: 2 }));
   });
 });
 

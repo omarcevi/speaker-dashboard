@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { onCall } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineString } from 'firebase-functions/params';
 import { getStorage } from 'firebase-admin/storage';
@@ -9,6 +9,8 @@ import { GoogleAuth } from 'google-auth-library';
 import { requireRole } from './access.js';
 import { readSheet } from './sync/readSheet.js';
 import { runSync } from './sync/runSync.js';
+import { applyImport } from './advocu/applyImport.js';
+import { ImportRefused } from './advocu/parseAdvocu.js';
 import { syncPhotos } from './photos/syncPhotos.js';
 import type { SubmissionData } from './model.js';
 import { fakeSheet } from './testing/fakeRows.js';
@@ -60,6 +62,23 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
   await requireRole(request.auth?.uid, ['member', 'admin']);
   return runSync(getFirestore(), reader(), { photos: photos() });
+});
+
+export const importAdvocu = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
+  const user = await requireRole(request.auth?.uid, ['admin']);
+  const { csv, mode } = (request.data ?? {}) as { csv?: unknown; mode?: unknown };
+  if (typeof csv !== 'string' || csv.length === 0 || csv.length > 5_000_000) {
+    throw new HttpsError('invalid-argument', 'csv must be a non-empty string of at most 5,000,000 characters.');
+  }
+  if (mode !== 'preview' && mode !== 'apply') {
+    throw new HttpsError('invalid-argument', 'mode must be "preview" or "apply".');
+  }
+  try {
+    return await applyImport(getFirestore(), csv, { apply: mode === 'apply', by: { uid: request.auth!.uid, name: user.name } });
+  } catch (e) {
+    if (e instanceof ImportRefused) throw new HttpsError('invalid-argument', e.message);
+    throw e;
+  }
 });
 
 export const scheduledSync = onSchedule(
