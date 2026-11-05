@@ -115,7 +115,7 @@ Some speakers apply through Advocu instead of the Form. An admin imports those b
 
 1. In Advocu, export the applications as CSV.
 2. Sign in as an admin and open the **Import** page. Upload the CSV and check the preview, especially the hidden count.
-3. Press the confirm button to import.
+3. Press **Import N applications** to import.
 4. **Never commit or share the export.** It holds personal data.
 
 ## Team rules

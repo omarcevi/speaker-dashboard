@@ -103,3 +103,5 @@ a.chip { color: inherit; text-decoration: none; }
 .advocu-details dt::after { content: ': '; }
 .advocu-details dd { display: inline; margin: 0; }
 .advocu-details div { margin: 0.1rem 0; }
+
+.count-warning { color: #b45309; font-weight: 700; }

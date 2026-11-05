@@ -13,7 +13,11 @@ function Counts({ s }: { s: ImportSummary }) {
   ]
   return (
     <ul>
-      {items.map(([label, n]) => <li key={label}>{label}: <b>{n}</b></li>)}
+      {items.map(([label, n]) => (
+        label === 'Hidden' && n > 0
+          ? <li key={label} className="count-warning">{label}: <b>{n}</b> — will be hidden because they're missing from this file</li>
+          : <li key={label}>{label}: <b>{n}</b></li>
+      ))}
     </ul>
   )
 }
@@ -36,7 +40,7 @@ export default function ImportPage() {
     setError(null)
     try {
       const res = await httpsCallable<Req, ImportSummary>(functions, 'importAdvocu')({ csv: text, mode })
-      if (mode === 'preview') { setPreview(res.data); setResult(null) } else { setResult(res.data); setPreview(null) }
+      if (mode === 'preview') { setPreview(res.data); setResult(null) } else { setResult(res.data); setPreview(null); setCsv(null) }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -66,6 +70,7 @@ export default function ImportPage() {
       <p className="muted">{lastLine}</p>
       <input
         type="file"
+        aria-label="Advocu CSV export"
         accept=".csv,text/csv"
         disabled={busy}
         onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = '' }}
@@ -94,7 +99,7 @@ export default function ImportPage() {
           )}
         </section>
       )}
-      {preview && csv !== null && (
+      {preview && preview.total > 0 && csv !== null && (
         <button disabled={busy} onClick={() => void call(csv, 'apply')}>
           {busy ? 'Importing…' : `Import ${preview.total} applications`}
         </button>
