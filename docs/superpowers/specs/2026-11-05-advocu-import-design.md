@@ -205,7 +205,7 @@ Server-side parsing is required. Parsing and planning live in `functions/` as pu
 - **Logistics:**
   - **Name, email and phone always come from the speaker's approved card.** That is what the team reviewed. A newer Form response never overrides them.
   - **Where the logistics fields come from,** in order:
-    1. The latest present Form document of the speaker's that is **approved**. The row shows `Form answers: Yes`.
+    1. The latest present Form document of the speaker's that is **the version an approved card displays** (`card.displayId`). The row shows `Form answers: Yes`. A Form document merged invisibly into an approved card (not its display version) doesn't count as approved.
     2. Otherwise, the latest present Form document that is **not declined**: the case where an approved Advocu-only speaker filled in the Form afterwards, possibly with a different title. The row shows `Form answers: Unreviewed`, with the tag "From an unreviewed Form response — confirm with the speaker".
     3. Otherwise, the logistics fields are empty. The row shows `Form answers: No`, with the tag "No Form answers yet", so the team knows whom to chase.
   - Co-speaker rows leave the Form answers cell empty.
