@@ -65,9 +65,9 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
 /** Vertex AI in europe-west1, in this project. The emulator gets the fake, so it never calls Vertex. */
 function aiClient(): AiClient {
   if (process.env.FUNCTIONS_EMULATOR === 'true') return fakeAiClient();
-  return vertexAiClient({
-    project: process.env.GCLOUD_PROJECT!, location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL,
-  });
+  const project = process.env.GCLOUD_PROJECT;
+  if (!project) throw new Error('GCLOUD_PROJECT not set');
+  return vertexAiClient({ project, location: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL });
 }
 
 export const syncNow = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
@@ -108,10 +108,14 @@ export const regenerateAi = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUN
   if (typeof id !== 'string' || id.trim() === '') {
     throw new HttpsError('invalid-argument', 'id must be a non-empty string.');
   }
+  let result;
   try {
-    return await runAiRefresh(getFirestore(), aiClient(), { onlyId: id, cap: 1 });
+    result = await runAiRefresh(getFirestore(), aiClient(), { onlyId: id, cap: 1 });
   } catch (e) {
     if (e instanceof AiNotFound) throw new HttpsError('not-found', e.message);
     throw e;
   }
+  // The cause is on ai/{id}.error and in the log; the caller gets a plain message.
+  if (result.failed.includes(id)) throw new HttpsError('internal', 'Could not regenerate this overview — try again later.');
+  return result;
 });
