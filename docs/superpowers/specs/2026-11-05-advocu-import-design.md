@@ -134,7 +134,7 @@ The primary is stable in practice: once the team acts on a merged card, only the
 **Forming and splitting:**
 - When a group forms later (for example, an approved Advocu-only speaker fills in the Form with the same title), it merges automatically. The card keeps the existing decision, because the reviewed document becomes the primary.
 - If titles are edited so they no longer match, the group splits back into separate cards. Each card keeps its own review data.
-- **A merged card disappears only when every document in the group is removed.** Removed documents (gone from the sheet or the export) still belong to their group and can still be its primary. That way, a decision made on the version that disappeared stays on the visible card. The card shows the content of a version that's still present:
+- **A merged card disappears only when every document in the group is removed.** Removed documents (gone from the sheet or the export) still belong to their group and can still be its primary. That way, a decision made on the version that disappeared stays on the visible card. When the primary has been removed, the card shows the content of a version that's still present, with the version warning (see Card content):
   1. the latest present Form document
   2. otherwise, the latest present Advocu document
   3. otherwise, the primary
