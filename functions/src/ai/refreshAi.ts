@@ -40,8 +40,9 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>) {
 }
 
 /**
- * Brings `ai/*`, `aiVectors/*`, `meta/topicMap` and `meta/ai` up to date with the present titled submissions.
- * Per-document model failures are recorded on `ai/{id}.error` and `meta/ai.error`, never thrown.
+ * Brings `ai/*`, `aiVectors/*`, `meta/topicMap` and (except for `onlyId` runs) `meta/ai` up to date with the present
+ * titled submissions.
+ * Per-document model failures are recorded on `ai/{id}.error` (and, in scheduled runs, `meta/ai.error`), never thrown.
  * Logs ids, counts and error messages only: never prompts, model output or submission text.
  */
 export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAiOptions = {}): Promise<RefreshAiResult> {
@@ -96,7 +97,8 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
       console.error(`AI refresh failed for ${id}: ${message}`);
       try {
         // Keep the previous overview and sourceHash, so the box shows "updating…" rather than nothing.
-        if (prev) await aiRef.update({ error: message });
+        // An unchanged error isn't rewritten, so members' listeners don't fire every run.
+        if (prev) { if (prev.error !== message) await aiRef.update({ error: message }); }
         else {
           const doc: AiDoc = { sourceHash: '', overview: null, neighbors: [], error: message };
           await aiRef.set(doc);
@@ -132,11 +134,14 @@ export async function refreshAi(db: Firestore, client: AiClient, opts: RefreshAi
     await writeMap(db, client, present, ais, vecs, at);
   }
 
-  // 4. Run summary. Pending is the normal backlog, also after an onlyId run.
+  // 4. Run summary. Pending is the normal backlog, also after an onlyId run. meta/ai describes scheduled runs only:
+  // a regenerate (onlyId) run leaves it alone, and its caller gets the result directly.
   const pending = normallyDue.filter(id => !generated.has(id)).length;
-  const firstError = todo.map(id => errors.get(id)).find(m => m !== undefined) ?? null;
-  const meta: AiMeta = { lastRunAt: at, generated: generated.size, pending, error: firstError };
-  await db.doc('meta/ai').set(meta);
+  if (opts.onlyId === undefined) {
+    const firstError = todo.map(id => errors.get(id)).find(m => m !== undefined) ?? null;
+    const meta: AiMeta = { lastRunAt: at, generated: generated.size, pending, error: firstError };
+    await db.doc('meta/ai').set(meta);
+  }
 
   const result = { generated: generated.size, pending, failed: todo.filter(id => errors.has(id)), deleted, mapUpdated };
   console.log(`AI refresh: generated=${result.generated} pending=${pending} failed=[${result.failed.join(',')}] deleted=${result.deleted} mapUpdated=${mapUpdated}`);

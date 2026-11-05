@@ -302,21 +302,55 @@ describe('refreshAi', () => {
     }
   });
 
-  it('onlyId keeps the real backlog in meta/ai.pending', async () => {
+  it('onlyId runs leave meta/ai unchanged and report the real backlog', async () => {
     const subs = await corpus();
     const n = subs.size;
     const client = fakeAiClient();
-    await refreshAi(db, client, { cap: 3 });
+    await refreshAi(db, client, { cap: 3, now: t1 });
+    const metaBefore = await aiMeta();
+    expect(metaBefore).toEqual({ lastRunAt: ts(t1), generated: 3, pending: n - 3, error: null });
     const done = await ids('ai');
 
-    const r1 = await refreshAi(db, client, { onlyId: done[0], cap: 1 });
+    const r1 = await refreshAi(db, client, { onlyId: done[0], cap: 1, now: t2 });
     expect(r1).toMatchObject({ generated: 1, pending: n - 3 });
-    expect((await aiMeta()).pending).toBe(n - 3);
+    expect(await aiMeta()).toEqual(metaBefore);
 
     const waiting = [...subs.keys()].find(id => !done.includes(id))!;
-    const r2 = await refreshAi(db, client, { onlyId: waiting, cap: 1 });
+    const r2 = await refreshAi(db, client, { onlyId: waiting, cap: 1, now: t2 });
     expect(r2).toMatchObject({ generated: 1, pending: n - 4 });
-    expect((await aiMeta()).pending).toBe(n - 4);
+    expect(await aiMeta()).toEqual(metaBefore);
+
+    const r3 = await refreshAi(db, fakeAiClient({ fail: new Set([subs.get(waiting)!.title]) }), { onlyId: waiting, cap: 1, now: t2 });
+    expect(r3.failed).toEqual([waiting]);
+    expect(await aiMeta()).toEqual(metaBefore);
+  });
+
+  it('a repeated failure does not rewrite an unchanged error', async () => {
+    const bad = await idOf('Kernel Things');
+    const failing = () => fakeAiClient({ fail: new Set(['Kernel Things']) });
+    await refreshAi(db, failing());
+    const first = (await ai(bad))!;
+    expect(first.error).toContain('fake ai failure');
+
+    // Every write to ai/{bad} outside a batch goes through DocumentReference.set or .update.
+    const DocRef = db.doc(`ai/${bad}`).constructor.prototype;
+    const update = vi.spyOn(DocRef, 'update');
+    const set = vi.spyOn(DocRef, 'set');
+    try {
+      const r = await refreshAi(db, failing());
+      expect(r.failed).toEqual([bad]);
+      const touched = [...update.mock.contexts, ...set.mock.contexts].map((ref: any) => ref.path);
+      expect(touched).not.toContain(`ai/${bad}`);
+    } finally {
+      update.mockRestore();
+      set.mockRestore();
+    }
+    expect(await ai(bad)).toEqual(first);
+
+    // A different message is still recorded.
+    const other: AiClient = { ...fakeAiClient(), async overview() { throw new Error('another failure'); } };
+    await refreshAi(db, other);
+    expect((await ai(bad))!.error).toBe('another failure');
   });
 
   it('onlyId for an untitled or unknown doc is refused before any work', async () => {
