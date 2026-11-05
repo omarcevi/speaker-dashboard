@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { TopicMap } from '../../../functions/src/model.ts'
+import type { AiMeta, TopicMap } from '../../../functions/src/model.ts'
 import { buildCards } from './cards.ts'
 import { fakeReview, fakeSub } from './testing.ts'
-import { mapView } from './topicMap.ts'
+import { aiStatusNotes, mapView } from './topicMap.ts'
 
 const map = (points: TopicMap['points']): TopicMap => ({
   points, clusters: [{ id: 0, label: 'Web' }, { id: 1, label: 'AI' }], generatedAt: null, error: null,
@@ -58,5 +58,29 @@ describe('mapView', () => {
     const v = mapView(map([{ id: 'a', x: 0.2, y: 0.2, cluster: 0 }]), cards, new Map())
     expect(v.dots.map((d) => d.card.id)).toEqual(['a'])
     expect(v.clusters.map((c) => c.id)).toEqual([0])
+  })
+})
+
+describe('aiStatusNotes', () => {
+  const meta = (o: Partial<AiMeta> = {}): AiMeta => ({ lastRunAt: null, generated: 0, pending: 0, error: null, ...o })
+  const withError = (error: string | null) => ({ ...map([]), error })
+  it('says nothing when everything is fine or nothing has run yet', () => {
+    expect(aiStatusNotes(meta(), withError(null))).toEqual([])
+    expect(aiStatusNotes(null, null)).toEqual([])
+  })
+  it('shows the pending count', () => {
+    expect(aiStatusNotes(meta({ pending: 7 }), withError(null))).toEqual(['Overviews pending: 7'])
+  })
+  it('shows a fixed problem text, never the stored error', () => {
+    const secret = 'invalid model output: overview failed validation'
+    const one = aiStatusNotes(meta({ error: secret }), withError(null))
+    expect(one).toEqual(['Last AI run problem: some overviews could not be generated.'])
+    expect(aiStatusNotes(meta(), withError(secret))).toEqual(['Last AI run problem: the topic names could not be generated.'])
+    const both = aiStatusNotes(meta({ pending: 2, error: secret }), withError(secret))
+    expect(both).toEqual([
+      'Overviews pending: 2',
+      'Last AI run problem: some overviews could not be generated; the topic names could not be generated.',
+    ])
+    expect(both.join(' ')).not.toContain(secret)
   })
 })

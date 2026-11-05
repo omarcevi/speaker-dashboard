@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
-import { mapView } from '../lib/topicMap.ts'
+import { aiStatusNotes, mapView } from '../lib/topicMap.ts'
 
 const SIZE = 1000
 const MARGIN = 60
@@ -12,11 +13,21 @@ const CHAR_W = 13
 const LABEL_H = 24
 const px = (v: number) => MARGIN + v * (SIZE - 2 * MARGIN)
 
+// Admins only: pending overviews and the last run's problem, if any. Nothing when all is well.
+function AiStatus() {
+  const { me } = useAuth()
+  const { aiMeta, topicMap } = useData()
+  if (me?.role !== 'admin') return null
+  const notes = aiStatusNotes(aiMeta, topicMap)
+  if (notes.length === 0) return null
+  return <div className="muted" role="status">{notes.map((n) => <p key={n}>{n}</p>)}</div>
+}
+
 export default function TopicMapPage() {
   const { topicMap, cards, reviews } = useData()
   const view = useMemo(() => (topicMap ? mapView(topicMap, cards, reviews) : null), [topicMap, cards, reviews])
   if (!topicMap || topicMap.points.length === 0) {
-    return <div><h1>Topic map</h1><p>The topic map is being prepared — check back in a few minutes.</p></div>
+    return <div><h1>Topic map</h1><p>The topic map is being prepared — check back in a few minutes.</p><AiStatus /></div>
   }
   if (!view) return null
   const scale = SIZE - 2 * MARGIN
@@ -50,6 +61,7 @@ export default function TopicMapPage() {
           </Link>
         ))}
       </svg>
+      <AiStatus />
     </div>
   )
 }

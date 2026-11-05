@@ -1,4 +1,4 @@
-import type { Review, Status, TopicMap } from '../../../functions/src/model.ts'
+import type { AiMeta, Review, Status, TopicMap } from '../../../functions/src/model.ts'
 import type { Card } from './cards.ts'
 import { statusOf } from './status.ts'
 
@@ -27,4 +27,16 @@ export function mapView(topicMap: TopicMap, cards: Card[], reviews: Map<string, 
     clusters.push({ id, label, count: own.length, cx, cy, r })
   }
   return { dots, clusters }
+}
+
+// Admin footnote on the AI job. The stored errors are already content-free, but this still shows only fixed text.
+export function aiStatusNotes(meta: AiMeta | null, map: TopicMap | null): string[] {
+  const notes: string[] = []
+  if (meta && meta.pending > 0) notes.push(`Overviews pending: ${meta.pending}`)
+  const problems = [
+    meta?.error ? 'some overviews could not be generated' : null,
+    map?.error ? 'the topic names could not be generated' : null,
+  ].filter((p) => p !== null)
+  if (problems.length > 0) notes.push(`Last AI run problem: ${problems.join('; ')}.`)
+  return notes
 }
