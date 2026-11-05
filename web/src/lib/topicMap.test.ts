@@ -49,4 +49,14 @@ describe('mapView', () => {
     expect(v.dots.map((d) => d.card.id)).toEqual(['a'])
     expect(v.clusters.find((c) => c.id === 0)!.count).toBe(1)
   })
+  it('a single-dot cluster has a positive radius', () => {
+    const v = mapView(map([{ id: 'a', x: 0.2, y: 0.2, cluster: 0 }]), buildCards([fakeSub({ id: 'a', row: 2 })], () => false), new Map())
+    expect(v.clusters[0].r).toBeGreaterThan(0)
+  })
+  it('a card with no point gets no dot, and a cluster with no dots is left out', () => {
+    const cards = buildCards([fakeSub({ id: 'a', row: 2 }), fakeSub({ id: 'b', row: 3 })], () => false)
+    const v = mapView(map([{ id: 'a', x: 0.2, y: 0.2, cluster: 0 }]), cards, new Map())
+    expect(v.dots.map((d) => d.card.id)).toEqual(['a'])
+    expect(v.clusters.map((c) => c.id)).toEqual([0])
+  })
 })

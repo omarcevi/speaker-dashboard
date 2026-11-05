@@ -8,14 +8,17 @@ const MARGIN = 60
 const LEGEND: [string, string][] = [
   ['pending', 'Pending (grey)'], ['maybe', 'Maybe (amber)'], ['approved', 'Approved (green)'], ['declined', 'Declined (red)'],
 ]
+const CHAR_W = 13
+const LABEL_H = 24
 const px = (v: number) => MARGIN + v * (SIZE - 2 * MARGIN)
 
 export default function TopicMapPage() {
   const { topicMap, cards, reviews } = useData()
   const view = useMemo(() => (topicMap ? mapView(topicMap, cards, reviews) : null), [topicMap, cards, reviews])
-  if (!topicMap || !view) {
+  if (!topicMap || topicMap.points.length === 0) {
     return <div><h1>Topic map</h1><p>The topic map is being prepared — check back in a few minutes.</p></div>
   }
+  if (!view) return null
   const scale = SIZE - 2 * MARGIN
   return (
     <div className="topic-map">
@@ -27,17 +30,23 @@ export default function TopicMapPage() {
         ))}
       </ul>
       <svg className="map-svg" viewBox={`0 0 ${SIZE} ${SIZE}`} role="group" aria-label="Topic map of talks">
-        {view.clusters.map((c) => (
-          <g key={c.id}>
-            <circle className="map-cluster" cx={px(c.cx)} cy={px(c.cy)} r={c.r * scale} />
-            <text className="map-label" x={px(c.cx)} y={px(c.cy) - c.r * scale - 6} textAnchor="middle">{`${c.label} · ${c.count}`}</text>
-          </g>
-        ))}
+        {view.clusters.map((c) => {
+          const text = `${c.label} · ${c.count}`
+          const half = (text.length * CHAR_W) / 2
+          const lx = Math.min(Math.max(px(c.cx), half + 4), SIZE - half - 4)
+          const ly = Math.min(Math.max(px(c.cy) - c.r * scale - 6, LABEL_H), SIZE - 4)
+          return (
+            <g key={c.id}>
+              <circle className="map-cluster" cx={px(c.cx)} cy={px(c.cy)} r={c.r * scale} />
+              <text className="map-label" x={lx} y={ly} textAnchor="middle">{text}</text>
+            </g>
+          )
+        })}
         {view.dots.map((d) => (
           <Link key={d.card.id} to={`/talk/${d.card.id}`} aria-label={`${d.card.title} (${d.status})`}>
-            <circle className={`dot st-${d.status}`} cx={px(d.x)} cy={px(d.y)} r={9}>
-              <title>{d.card.title}</title>
-            </circle>
+            <title>{d.card.title}</title>
+            <circle className="hit" cx={px(d.x)} cy={px(d.y)} r={18} />
+            <circle className={`dot st-${d.status}`} cx={px(d.x)} cy={px(d.y)} r={9} />
           </Link>
         ))}
       </svg>
