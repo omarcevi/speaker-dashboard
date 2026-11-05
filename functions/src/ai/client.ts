@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
-import type { AiOverview } from '../model';
-import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, OVERVIEW_LIMITS, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt';
-import { escapeAngles } from './inputs';
+import type { AiOverview } from '../model.js';
+import { OVERVIEW_SYSTEM, OVERVIEW_SCHEMA, OVERVIEW_LIMITS, CLUSTER_SYSTEM, CLUSTER_SCHEMA } from './prompt.js';
+import { escapeAngles } from './inputs.js';
 
 /** Overviews and cluster names. Vertex serves it only on `global` or the `us`/`eu` multi-regions; we use `eu`. */
 export const OVERVIEW_MODEL = 'gemini-3.8-flash';

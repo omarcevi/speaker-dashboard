@@ -1,4 +1,4 @@
-import type { AiClient, OverviewFields } from '../ai/client';
+import type { AiClient, OverviewFields } from '../ai/client.js';
 
 function hash(s: string): number {
   let h = 2166136261;

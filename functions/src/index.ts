@@ -13,7 +13,7 @@ import { applyImport } from './advocu/applyImport.js';
 import { ImportRefused } from './advocu/parseAdvocu.js';
 import { syncPhotos } from './photos/syncPhotos.js';
 import { refreshAi as runAiRefresh, AiNotFound } from './ai/refreshAi.js';
-import { vertexAiClient, OVERVIEW_MODEL, EMBED_MODEL, type AiClient } from './ai/client.js';
+import type { AiClient } from './ai/client.js';
 import type { SubmissionData } from './model.js';
 import { fakeSheet } from './testing/fakeRows.js';
 import { fakeAiClient } from './testing/fakeAiClient.js';
@@ -64,12 +64,14 @@ function photos(): ((subs: SubmissionData[]) => Promise<unknown>) | undefined {
 
 /**
  * Vertex AI in this project, inside the EU: generation on the `eu` multi-region, embeddings in europe-west1.
- * The emulator gets the fake, so it never calls Vertex.
+ * The emulator gets the fake, so it never calls Vertex. The SDK is imported here, on first use, so the sync and
+ * import functions never load it.
  */
-function aiClient(): AiClient {
+async function aiClient(): Promise<AiClient> {
   if (process.env.FUNCTIONS_EMULATOR === 'true') return fakeAiClient();
   const project = process.env.GCLOUD_PROJECT;
   if (!project) throw new Error('GCLOUD_PROJECT not set');
+  const { vertexAiClient, OVERVIEW_MODEL, EMBED_MODEL } = await import('./ai/client.js');
   return vertexAiClient({
     project, generationLocation: 'eu', embedLocation: 'europe-west1', overviewModel: OVERVIEW_MODEL, embedModel: EMBED_MODEL,
   });
@@ -104,7 +106,7 @@ export const scheduledSync = onSchedule(
 
 export const refreshAi = onSchedule(
   { region, serviceAccount: SYNC_SERVICE_ACCOUNT, schedule: 'every 15 minutes', timeoutSeconds: 540, memory: '512MiB' },
-  async () => { await runAiRefresh(getFirestore(), aiClient()); },
+  async () => { await runAiRefresh(getFirestore(), await aiClient()); },
 );
 
 export const regenerateAi = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUNT, timeoutSeconds: 300, memory: '512MiB' }, async request => {
@@ -115,7 +117,7 @@ export const regenerateAi = onCall({ region, serviceAccount: SYNC_SERVICE_ACCOUN
   }
   let result;
   try {
-    result = await runAiRefresh(getFirestore(), aiClient(), { onlyId: id, cap: 1 });
+    result = await runAiRefresh(getFirestore(), await aiClient(), { onlyId: id, cap: 1 });
   } catch (e) {
     if (e instanceof AiNotFound) throw new HttpsError('not-found', e.message);
     throw e;
