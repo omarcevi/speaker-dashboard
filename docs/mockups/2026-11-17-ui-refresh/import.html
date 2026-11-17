@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="data.js"></script>
+<script src="ui.js"></script>
+<script>
+const { D, esc, I, shell, plural } = UI;
+// The preview a real CSV would return. New + updated + unchanged = applications in the file; hidden ones are
+// from the last import (7 = 5 unchanged + 1 updated + 1 hidden) and are missing from this file.
+const preview = { file: 'advocu-export-2026-11-17.csv', added: 2, updated: 1, unchanged: 5, hidden: 1, merged: 2, speakers: 8, rejected: [{ row: 7, reason: 'No email address' }] };
+const total = preview.added + preview.updated + preview.unchanged;
+console.assert(preview.unchanged + preview.updated + preview.hidden === D.advocu.total, 'last import must reconcile');
+let state = 'idle';
+const HISTORY = [
+  { when: D.advocu.lastImport, by: D.advocu.by, file: 'advocu-export-2026-11-14.csv', what: '7 applications · 3 new' },
+  { when: '9 Nov 2026, 11:05', by: 'Omar E.', file: 'advocu-export-2026-11-09.csv', what: '4 applications · 4 new' },
+];
+
+function render() {
+  shell('import', `
+    <div class="title-row"><div><h1>Import</h1><p class="lede">Where talks come from: the Google Form sheet and Advocu.</p></div></div>
+    <div class="settings">
+      <section class="setting">
+        <div class="about"><h2>Google Form sheet</h2><p>Syncs every 15 minutes, and when anyone presses Refresh on Submissions. Decisions, scores and comments are never touched by a sync.</p></div>
+        <div class="card pad">
+          <dl class="kv"><dt>Last sync</dt><dd>${esc(D.sync.lastSynced)} · ${plural(D.sync.rows, 'row')} read</dd><dt>Problems</dt><dd>None</dd></dl>
+          <div class="notice" style="margin-top:16px">Don't sort or delete rows in the Form Responses tab. Each row is a talk's identity; use filter views instead.</div>
+          <div style="margin-top:16px"><button class="btn">${I.refresh}Sync now</button></div>
+        </div>
+      </section>
+      <section class="setting">
+        <div class="about"><h2>Advocu applications</h2><p>Upload the CSV export from Advocu. You'll see what changes before anything is written.</p>
+          <p style="margin-top:12px">Last import ${esc(D.advocu.lastImport)} by ${esc(D.advocu.by)}, ${plural(D.advocu.total, 'application')}.</p></div>
+        <div class="card pad">
+          ${state === 'idle' ? `<label class="drop" style="display:block;cursor:pointer"><input type="file" accept=".csv,text/csv" class="vh" id="file"><b>Choose a CSV file</b><br>or drop it here</label>` : ''}
+          ${state !== 'idle' ? `<div class="card-head"><h2>${state === 'done' ? 'Imported' : 'Preview'} · ${esc(preview.file)}</h2><span class="muted num">${plural(total, 'application')}</span></div>
+            <dl class="tally">
+              <div><dt>New</dt><dd class="num">${preview.added}</dd></div>
+              <div><dt>Updated</dt><dd class="num">${preview.updated}</dd></div>
+              <div><dt>Unchanged</dt><dd class="num">${preview.unchanged}</dd></div>
+              <div><dt>Will be hidden</dt><dd class="num">${preview.hidden}</dd></div>
+            </dl>
+            <dl class="kv" style="margin-top:20px"><dt>Merged</dt><dd>${plural(preview.merged, 'talk')} also came in through the Form; they show as one card</dd><dt>Speakers</dt><dd>${preview.speakers}</dd></dl>
+            ${preview.hidden ? `<div class="notice" style="margin-top:16px">${plural(preview.hidden, 'application')} from the last import ${preview.hidden === 1 ? 'is' : 'are'} missing from this file and will be hidden. Their reviews are kept.</div>` : ''}
+            ${preview.rejected.length ? `<p style="margin-top:16px"><b style="font-weight:500">Skipped rows</b></p><ul style="margin-top:4px">${preview.rejected.map((r) => `<li class="muted">Row ${r.row}: ${esc(r.reason)}</li>`).join('')}</ul>` : ''}
+            <div style="display:flex;gap:8px;margin-top:20px">${state === 'preview' ? `<button class="btn primary" id="apply">Import ${plural(total, 'application')}</button><button class="btn text" id="cancel">Choose another file</button>` : '<button class="btn" id="cancel">Import another file</button>'}</div>` : ''}
+        </div>
+      </section>
+      <section class="setting">
+        <div class="about"><h2>Recent imports</h2><p>Each import is recorded with who ran it. Hidden applications come back if a later file includes them again.</p></div>
+        <div class="card pad"><ul class="people">${HISTORY.map((h) => `<li style="grid-template-columns:minmax(0,1fr) auto"><span><b>${esc(h.when)}</b><span>${esc(h.by)} · ${esc(h.file)}</span></span><span class="muted num">${esc(h.what)}</span></li>`).join('')}</ul></div>
+      </section>
+    </div>`);
+  document.getElementById('file')?.addEventListener('change', () => { state = 'preview'; render(); });
+}
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'apply') { state = 'done'; render(); }
+  if (e.target.id === 'cancel') { state = 'idle'; render(); }
+});
+state = new URLSearchParams(location.search).get('state') ?? 'idle';
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Submissions · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="data.js"></script>
+<script src="ui.js"></script>
+<script>
+const { D, esc, I, shell, store, summary, plural, statusPill, speakerName, roleLine, otherTalks, readQuery, writeQuery, filtered } = UI;
+let f = readQuery();
+let showAll = store.get(D.showAllKey, false);
+
+const topics = [...new Set(D.talks.filter((x) => !x.removed).map((x) => x.topic))].sort();
+const levels = ['Beginner', 'Intermediate', 'Advanced'];
+const removedCount = D.talks.filter((x) => x.removed).length;
+const option = (v, cur, label = v) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+
+shell('list', `
+  <div class="title-row">
+    <div><h1>Submissions</h1><p class="lede">DevFest Istanbul 2026 CFP · ${D.counts.all} talks from ${D.speakerCount} speakers</p></div>
+    <div class="actions"><span class="stamp">Synced ${D.sync.lastSynced}</span><button class="btn" id="refresh">${I.refresh}Refresh</button></div>
+  </div>
+  <div class="counts" role="group" aria-label="Filter by status" id="counts"></div>
+  <div class="strip" id="strip" aria-hidden="true"></div>
+  <div class="filters">
+    <label class="search"><span class="vh">Search</span>${I.search}<input id="q" type="search" placeholder="Search talks, speakers, companies" value="${esc(f.q)}"></label>
+    <span class="select"><select id="topic" aria-label="Topic">${option('', f.topic, 'All topics')}${topics.map((t) => option(t, f.topic)).join('')}</select></span>
+    <span class="select"><select id="level" aria-label="Level">${option('', f.level, 'All levels')}${levels.map((t) => option(t, f.level)).join('')}</select></span>
+    <span class="select"><select id="sort" aria-label="Sort">${option('date', f.sort, 'Submission order')}${option('score', f.sort, 'Highest score first')}${option('spread', f.sort, 'Most disagreement first')}</select></span>
+    <span class="grow"></span>
+    <label class="switch"><input type="checkbox" id="showAll"${showAll ? ' checked' : ''}><span class="track"></span>Show all team scores</label>
+  </div>
+  <div class="card table-card"><table class="resp">
+    <thead><tr>
+      <th style="width:128px">Status</th><th>Talk</th><th style="width:300px">Speaker</th>
+      <th class="n" style="width:160px" id="th-score">Score</th><th class="n" style="width:104px">Comments</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table><div class="table-foot" id="foot"></div></div>
+`);
+
+function render() {
+  const all = filtered({ ...f, status: 'all' }, showAll, true);
+  const counts = { all: all.length };
+  for (const s of D.STATUSES) counts[s] = all.filter((x) => x.status === s).length;
+  document.getElementById('counts').innerHTML = ['all', ...D.STATUSES].map((s) => `
+    <button class="count${s === 'all' ? '' : ' st-' + s}" aria-pressed="${f.status === s}" data-status="${s}">
+      <span class="label">${s === 'all' ? '' : '<span class="dot"></span>'}${D.LABEL[s]}</span>
+      <span class="value">${counts[s]}</span>
+    </button>`).join('');
+  document.getElementById('strip').innerHTML = D.STATUSES.filter((s) => counts[s] > 0).map((s) => `<i class="st-${s}" style="flex:${counts[s]}"></i>`).join('');
+
+  const rows = filtered(f, showAll);
+  const q = writeQuery(f);
+  const th = document.getElementById('th-score');
+  th.toggleAttribute('aria-sort', f.sort !== 'date');
+  if (f.sort !== 'date') th.setAttribute('aria-sort', 'descending');
+  th.innerHTML = f.sort === 'date' ? 'Score' : `<button>${I.sort}${f.sort === 'score' ? 'Score' : 'Spread'}</button>`;
+
+  document.getElementById('rows').innerHTML = rows.length === 0
+    ? `<tr><td colspan="5" class="empty"><b>No talks match these filters</b>Try another status or clear the search. <button class="link-btn" id="clear">Clear filters</button></td></tr>`
+    : rows.map((x) => {
+      const s = summary(x, showAll);
+      const sp = x.speaker;
+      const others = otherTalks(x).length;
+      const score = s.revealed
+        ? `<div class="cell-main">${s.avg}</div><div class="cell-sub" style="justify-content:flex-end">${s.min === s.max ? s.min : `${s.min}–${s.max}`} · ${plural(s.count, 'score')}</div>`
+        : `<div class="cell-main dash">—</div><div class="cell-sub" style="justify-content:flex-end"${s.count ? ' title="Score this talk to see the team\'s scores"' : ''}>${s.count === 0 ? 'No scores yet' : `Hidden · ${plural(s.count, 'score')}`}</div>`;
+      const href = `talk.html?id=${x.id}${q ? '&' + q : ''}`;
+      return `<tr class="row${x.removed ? ' removed' : ''}" data-href="${href}">
+        <td data-col="status">${statusPill(x.status)}${x.removed ? ' <span class="tag">Removed from sheet</span>' : ''}</td>
+        <td data-col="talk"><div class="cell-main"><a href="${href}">${esc(x.title)}</a></div><div class="cell-sub">${esc(x.topic)} · ${esc(x.level)}${x.sources.includes('advocu') ? ' <span class="tag">Form + Advocu</span>' : ''}</div></td>
+        <td data-col="speaker"><div class="cell-main">${esc(speakerName(sp))}</div><div class="cell-sub">${esc(roleLine(sp))}${others ? ` <span class="tag">+${plural(others, 'other talk')}</span>` : ''}</div></td>
+        <td class="n" data-col="score">${score}</td>
+        <td class="n" data-col="hide-sm">${x.comments.length ? x.comments.length : '<span class="dash">0</span>'}</td>
+      </tr>`;
+    }).join('');
+
+  const hidden = f.removed ? 0 : removedCount;
+  const filteredOut = counts.all !== D.counts.all;
+  document.getElementById('foot').innerHTML = `
+    <span>${rows.length === counts.all && f.status === 'all' ? plural(rows.length, 'talk') : `${rows.length} of ${D.counts.all} talks`}${filteredOut ? ' match the filters' : ''}</span>
+    <span>${hidden ? `${plural(hidden, 'row')} removed from the sheet ${hidden === 1 ? 'is' : 'are'} hidden · <button class="link-btn" id="showRemoved">Show</button>` : removedCount ? '<button class="link-btn" id="hideRemoved">Hide removed rows</button>' : ''}</span>`;
+}
+
+function update(patch) {
+  f = { ...f, ...patch };
+  const q = writeQuery(f);
+  history.replaceState(null, '', q ? `?${q}` : location.pathname);
+  render();
+}
+
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('.count');
+  if (c) return update({ status: c.dataset.status });
+  if (e.target.id === 'clear') { document.getElementById('q').value = ''; document.getElementById('topic').value = ''; document.getElementById('level').value = ''; return update({ q: '', topic: '', level: '', status: 'all' }); }
+  if (e.target.id === 'showRemoved') return update({ removed: true });
+  if (e.target.id === 'hideRemoved') return update({ removed: false });
+  if (e.target.closest('#refresh')) { const b = e.target.closest('#refresh'); b.disabled = true; b.lastChild.textContent = 'Syncing…'; setTimeout(() => { b.disabled = false; b.lastChild.textContent = 'Refresh'; document.querySelector('.stamp').textContent = 'Synced just now'; }, 900); return; }
+  const row = e.target.closest('tr.row');
+  if (row && !e.target.closest('a, button')) location.href = row.dataset.href;
+});
+document.getElementById('q').addEventListener('input', (e) => update({ q: e.target.value }));
+document.getElementById('topic').addEventListener('change', (e) => update({ topic: e.target.value }));
+document.getElementById('level').addEventListener('change', (e) => update({ level: e.target.value }));
+document.getElementById('sort').addEventListener('change', (e) => update({ sort: e.target.value }));
+document.getElementById('showAll').addEventListener('change', (e) => { showAll = e.target.checked; store.set(D.showAllKey, showAll); render(); });
+render();
+</script>
+</body>
+</html>
