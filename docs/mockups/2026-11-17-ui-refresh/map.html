@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topic map · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="data.js"></script>
+<script src="ui.js"></script>
+<script>
+const { D, esc, shell, plural, statusPill, speakerName } = UI;
+// Clusters stand in for the AI topic map (meta/topicMap). Positions are deterministic.
+// Two layouts from one set of clusters: a wide map on desktop, one column on a phone so every cluster fits the width.
+const CLUSTERS = [
+  { id: 0, label: 'Gemini and applied AI', wide: [180, 190], ids: ['1', '7', '10', '18', '23'] },
+  { id: 1, label: 'Android, Wear and Flutter', wide: [500, 190], ids: ['2', '3', '8', '14', '21', '22'] },
+  { id: 2, label: 'Web platform', wide: [820, 190], ids: ['6', '9', '12', '15'] },
+  { id: 3, label: 'Firebase and cloud backends', wide: [340, 470], ids: ['4', '5', '13', '16', '19', '20', '24'] },
+  { id: 4, label: 'Hardware and first talks', wide: [660, 470], ids: ['11', '17'] },
+];
+const byId = Object.fromEntries(D.talks.map((x) => [x.id, x]));
+const phone = matchMedia('(max-width: 720px)');
+function layout() {
+  const narrow = phone.matches;
+  const W = narrow ? 600 : 1000;
+  const pitch = 300;
+  const H = narrow ? CLUSTERS.length * pitch + 20 : 620;
+  const dots = [];
+  for (const c of CLUSTERS) {
+    [c.cx, c.cy] = narrow ? [300, 170 + c.id * pitch] : c.wide;
+    c.r = 104 + c.ids.length * 3;
+    c.ids.forEach((id, i) => {
+      const a = (i / c.ids.length) * Math.PI * 2 + c.id;
+      const r = c.ids.length <= 2 ? 34 : 40 + (i % 2) * 30;
+      dots.push({ talk: byId[id], x: c.cx + Math.cos(a) * r, y: c.cy + Math.sin(a) * r, c });
+    });
+  }
+  return { W, H, dots, narrow };
+}
+let active = 'all';
+
+shell('map', `
+  <div class="title-row">
+    <div><h1>Topic map</h1><p class="lede">Talks on similar topics sit close together. Select a dot to open the talk.</p></div>
+    <span class="stamp">Map updated 2 hours ago</span>
+  </div>
+  <div class="counts" role="group" aria-label="Highlight by status" id="counts"></div>
+  <div class="map-layout">
+    <div class="card map-card"><svg class="map-svg" id="map" role="group" aria-label="Topic map of talks"></svg></div>
+    <section class="card pad" aria-label="Clusters">
+      <div class="card-head"><h2>Clusters</h2><span class="muted">${CLUSTERS.length}</span></div>
+      <ul class="cluster-list">${CLUSTERS.map((c) => {
+        const talks = c.ids.map((id) => byId[id]);
+        const n = (s) => talks.filter((x) => x.status === s).length;
+        return `<li><div class="line"><b style="font-weight:500">${esc(c.label)}</b><span class="num muted">${talks.length}</span></div>
+          <div class="strip" aria-hidden="true">${D.STATUSES.filter((s) => n(s)).map((s) => `<i class="st-${s}" style="flex:${n(s)}"></i>`).join('')}</div>
+          <div class="cell-sub">${D.STATUSES.filter((s) => n(s)).map((s) => `${n(s)} ${D.LABEL[s].toLowerCase()}`).join(' · ')}</div></li>`;
+      }).join('')}</ul>
+      <p class="foot-note">Dot colours are the review statuses. Pick a status above to fade the others.</p>
+    </section>
+  </div>
+`);
+
+function render() {
+  document.getElementById('counts').innerHTML = ['all', ...D.STATUSES].map((s) => `
+    <button class="count${s === 'all' ? '' : ' st-' + s}" aria-pressed="${active === s}" data-status="${s}">
+      <span class="label">${s === 'all' ? '' : '<span class="dot"></span>'}${D.LABEL[s]}</span><span class="value">${D.counts[s]}</span></button>`).join('');
+  const { W, H, dots, narrow } = layout();
+  const svg = document.getElementById('map');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.classList.toggle('tall', narrow);
+  svg.innerHTML =
+    CLUSTERS.map((c) => `<circle class="map-cluster" cx="${c.cx}" cy="${c.cy}" r="${c.r}"/>
+      <text class="map-label" x="${c.cx}" y="${c.cy - c.r - 14}" text-anchor="middle">${esc(c.label)} <tspan class="map-label-n">${c.ids.length}</tspan></text>`).join('') +
+    dots.map((d) => `<a href="talk.html?id=${d.talk.id}" class="st-${d.talk.status}${active !== 'all' && d.talk.status !== active ? ' dim' : ''}" aria-label="${esc(d.talk.title)} (${D.LABEL[d.talk.status]})">
+      <title>${esc(d.talk.title)} · ${esc(speakerName(d.talk.speaker))}</title><circle class="map-dot" cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="11"/></a>`).join('');
+}
+document.addEventListener('click', (e) => { const c = e.target.closest('.count'); if (c) { active = c.dataset.status; render(); } });
+phone.addEventListener('change', render);
+render();
+</script>
+</body>
+</html>

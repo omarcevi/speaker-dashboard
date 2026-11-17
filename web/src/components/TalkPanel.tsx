@@ -1,76 +1,33 @@
-import { Link } from 'react-router-dom'
-import type { Status } from '../../../functions/src/model.ts'
-import type { Comment } from '../../../functions/src/model.ts'
-import type { Actor } from '../data/actions.ts'
 import type { Card } from '../lib/cards.ts'
 import { versionWarning } from '../lib/versionWarning.ts'
-import OverviewBox from './OverviewBox.tsx'
-import SimilarTalks from './SimilarTalks.tsx'
 import AdvocuDetails from './AdvocuDetails.tsx'
-import SourceBadge from './SourceBadge.tsx'
-import Comments from './Comments.tsx'
-import StatusHistory from './StatusHistory.tsx'
-import StatusChip from './StatusChip.tsx'
+import { ContactList } from './SpeakerPanel.tsx'
 
 function Section({ label, text }: { label: string; text: string }) {
   if (!text.trim()) return null
-  return (
-    <>
-      <div className="lbl">{label}</div>
-      <p className="prose">{text}</p>
-    </>
-  )
+  return <div className="section"><h3>{label}</h3><p className="prose">{text}</p></div>
 }
 
-export default function TalkPanel({ sub, status, comments, me, titleOf }: {
-  sub: Card
-  status: Status
-  comments: (Comment & { id: string })[]
-  me: Actor
-  titleOf: (id: string) => string | undefined
-}) {
+export default function TalkPanel({ sub }: { sub: Card }) {
   const warning = versionWarning(sub)
   const co = sub.coSpeaker
+  const presented = sub.presentedBefore.trim()
   return (
-    <section className="talk-panel">
-      <div className="chips">
-        <StatusChip status={status} />
-        <SourceBadge sources={sub.sources} />
-        {sub.topicGroup && <span className="chip">{sub.topicGroup}</span>}
-        {sub.level && <span className="chip">{sub.level}</span>}
-        {sub.language && <span className="chip">{sub.language}</span>}
-        {sub.presentedBefore && <span className="chip">Presented before: {sub.presentedBefore}</span>}
-        {sub.noSession && <span className="tag">No session</span>}
-        {sub.removedFromSheet && <span className="tag">Removed</span>}
-        {sub.possibleDuplicateOf.length > 0 && (
-          <span className="tag">
-            Possible duplicate of{' '}
-            {sub.possibleDuplicateOf.map((id, i) => (
-              <span key={id}>{i > 0 && ', '}<Link to={`/talk/${id}`}>{titleOf(id) ?? id}</Link></span>
-            ))}
-          </span>
-        )}
-      </div>
-      {warning && <p className="warning" role="status">{warning}</p>}
-      <StatusHistory key={`history-${sub.id}`} submissionId={sub.id} />
-      <OverviewBox key={`overview-${sub.id}`} card={sub} />
-      <h2 className="talk-title">{sub.title}</h2>
-      <Section label="Abstract" text={sub.abstract} />
-      {sub.advocu && <AdvocuDetails advocu={sub.advocu} sources={sub.sources} />}
+    <section className="card pad" aria-label="Talk details">
+      {warning && <p className="notice" role="status" style={{ marginBottom: 20 }}>{warning}</p>}
+      <Section label="Abstract" text={sub.abstract || (sub.noSession ? 'No session was submitted with this form response.' : '')} />
       <Section label="Key takeaways" text={sub.takeaways} />
+      {presented && <Section label="Presented before" text={presented} />}
       <Section label="Talk history" text={sub.talkHistory} />
+      {sub.advocu && <div className="section"><AdvocuDetails advocu={sub.advocu} sources={sub.sources} /></div>}
       {co && (
-        <>
-          <div className="lbl">Co-speaker</div>
-          <p>
-            <b>{co.firstName} {co.lastName}</b>
-            {/^https?:\/\//.test(co.photoUrl) && <> · <a href={co.photoUrl} target="_blank" rel="noopener noreferrer">Open photo ↗</a></>}
-          </p>
-          {co.bio.trim() && <p className="prose">{co.bio}</p>}
-        </>
+        <div className="section">
+          <h3>Co-speaker</h3>
+          <p className="prose"><b style={{ fontWeight: 500 }}>{co.firstName} {co.lastName}</b>{co.bio.trim() && <> · {co.bio}</>}</p>
+          <ContactList email={co.email} phone={co.phone} links={{ linkedin: co.linkedin, x: co.x, instagram: co.instagram, github: '' }} />
+          {/^https?:\/\//.test(co.photoUrl) && <p style={{ marginTop: 8 }}><a href={co.photoUrl} target="_blank" rel="noopener noreferrer">Open their photo</a></p>}
+        </div>
       )}
-      <SimilarTalks key={`similar-${sub.id}`} card={sub} />
-      <div className="comments-slot"><Comments key={sub.id} submissionId={sub.id} comments={comments} me={me} /></div>
     </section>
   )
 }

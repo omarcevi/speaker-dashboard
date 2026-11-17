@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logistics · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="data.js"></script>
+<script src="ui.js"></script>
+<script>
+const { D, esc, I, shell, plural, speakerName } = UI;
+const approved = D.talks.filter((x) => !x.removed && x.status === 'approved');
+// One row per person: speakers of approved talks, then their co-speakers (the form asks co-speakers no logistics).
+const people = [];
+for (const x of approved) {
+  const sp = x.speaker;
+  people.push({ name: speakerName(sp), email: sp.email, phone: sp.phone, talk: x.title, talkId: x.id, kind: 'speaker',
+    from: sp.abroad || sp.outside || 'Istanbul', abroad: !!sp.abroad, outside: !!sp.outside, ...sp.logistics, anything: sp.anything });
+  if (x.coSpeaker) people.push({ name: `${x.coSpeaker.first} ${x.coSpeaker.last}`, email: x.coSpeaker.email, phone: x.coSpeaker.phone, talk: x.title, talkId: x.id, kind: 'co-speaker' });
+}
+const speakers = people.filter((p) => p.kind === 'speaker');
+const count = (k) => speakers.filter((p) => p[k] === 'Yes').length;
+const sizes = ['S', 'M', 'L', 'XL'].map((s) => [s, speakers.filter((p) => p.tshirt === s).length]).filter(([, n]) => n);
+console.assert(sizes.reduce((a, [, n]) => a + n, 0) === speakers.length, 't-shirt sizes must add up to speakers');
+const yn = (v) => (v === undefined ? '<span class="dash">—</span>' : v === 'Yes' ? '<span class="yes">Yes</span>' : '<span class="dash">No</span>');
+
+shell('logistics', `
+  <div class="title-row">
+    <div><h1>Logistics</h1><p class="lede">${plural(speakers.length, 'approved speaker')} and ${plural(people.length - speakers.length, 'co-speaker')} · from their Form answers</p></div>
+    <button class="btn primary" id="export">${I.download}Export CSV</button>
+  </div>
+  <dl class="card summary">
+    <div><dt>Need accommodation</dt><dd class="num">${count('accommodation')}</dd></div>
+    <div><dt>Need transport</dt><dd class="num">${count('transport')}</dd></div>
+    <div><dt>From abroad</dt><dd class="num">${speakers.filter((p) => p.abroad).length}</dd></div>
+    <div><dt>Istanbul tour</dt><dd class="num">${count('tour')}</dd></div>
+    <div><dt>After party</dt><dd class="num">${count('afterParty')}</dd></div>
+    <div><dt>T-shirts</dt><dd class="num">${sizes.map(([s, n]) => `${n}<small> ${s}</small>`).join(' ')}</dd></div>
+  </dl>
+  <div class="card table-card scroll-x"><table class="resp labelled">
+    <thead><tr><th style="width:230px">Person</th><th style="width:220px">Talk</th><th>Coming from</th><th>Transport</th><th>Accommodation</th><th>Tour</th><th>After party</th><th>T-shirt</th><th>Notes</th></tr></thead>
+    <tbody>${people.map((p) => `<tr>
+      <td><div class="cell-main">${esc(p.name)}${p.kind === 'co-speaker' ? ' <span class="tag">Co-speaker</span>' : ''}</div>
+        <div class="cell-sub"><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></div><div class="cell-sub num">${esc(p.phone)}</div></td>
+      <td data-label="Talk"><a href="talk.html?id=${p.talkId}" style="text-decoration:none">${esc(p.talk)}</a></td>
+      <td data-label="Coming from">${p.from ? esc(p.from) + (p.abroad ? '<div class="cell-sub">From abroad</div>' : p.outside ? '<div class="cell-sub">Outside Istanbul</div>' : '') : '<span class="dash">—</span>'}</td>
+      <td data-label="Transport">${yn(p.transport)}</td><td data-label="Accommodation">${yn(p.accommodation)}</td><td data-label="Tour">${yn(p.tour)}</td><td data-label="After party">${yn(p.afterParty)}</td>
+      <td data-label="T-shirt">${p.tshirt ? esc(p.tshirt) : '<span class="dash">—</span>'}</td>
+      <td data-label="Notes"><div class="clip" title="${esc([p.other, p.anything].filter(Boolean).join(' · '))}">${esc([p.other, p.anything].filter(Boolean).join(' · ')) || '<span class="dash">—</span>'}</div></td>
+    </tr>`).join('')}</tbody>
+  </table><div class="table-foot"><span>Co-speakers have no logistics answers; the Form doesn't ask them.</span><span>${plural(people.length, 'person', 'people')}</span></div></div>
+`);
+document.getElementById('export').addEventListener('click', (e) => { const b = e.currentTarget; b.lastChild.textContent = 'Downloaded'; setTimeout(() => { b.lastChild.textContent = 'Export CSV'; }, 1200); });
+</script>
+</body>
+</html>

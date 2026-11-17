@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import type { Comment } from '../../../functions/src/model.ts'
+import { initials } from '../lib/initials.ts'
 import { addComment, deleteComment, editComment, type Actor } from '../data/actions.ts'
 
 type CommentWithId = Comment & { id: string }
@@ -69,16 +70,16 @@ function CommentItem({ c, me }: { c: CommentWithId; me: Actor }) {
   return (
     <li className="comment">
       <div className="comment-head">
-        <b>{c.name}</b> <span className="muted">{relativeTime(c.createdAt)}</span>
-        {c.editedAt && <span className="muted"> (edited)</span>}
+        <span className="avatar sm" aria-hidden="true">{initials(c.name)}</span>
+        <b>{c.name}</b> <span className="muted" style={{ fontSize: 13 }}>{relativeTime(c.createdAt)}{c.editedAt && ' · edited'}</span>
       </div>
       {editing ? (
-        <div>
-          <textarea value={draft} rows={3} maxLength={5000} disabled={busy} autoFocus
+        <div className="comment-edit">
+          <textarea aria-label="Edit your comment" value={draft} rows={3} maxLength={5000} disabled={busy} autoFocus
             onChange={(e) => setDraft(e.target.value)} onKeyDown={submitOnModEnter(save)} />
           <div className="comment-actions">
-            <button disabled={busy || !draft.trim()} onClick={save}>Save</button>
-            <button disabled={busy} onClick={() => { setEditing(false); setDraft(c.text); setError(null) }}>Cancel</button>
+            <button className="btn primary sm" disabled={busy || !draft.trim()} onClick={save}>Save</button>
+            <button className="btn text sm" disabled={busy} onClick={() => { setEditing(false); setDraft(c.text); setError(null) }}>Cancel</button>
           </div>
         </div>
       ) : (
@@ -88,9 +89,9 @@ function CommentItem({ c, me }: { c: CommentWithId; me: Actor }) {
         <div className="comment-actions">
           {confirming ? (
             <>
-              <span>Delete?</span>
-              <button disabled={busy} onClick={() => run('delete the comment', () => deleteComment(c.id), () => setConfirming(false))}>Yes</button>
-              <button disabled={busy} onClick={() => setConfirming(false)}>No</button>
+              <span>Delete this comment?</span>
+              <button className="btn sm" disabled={busy} onClick={() => run('delete the comment', () => deleteComment(c.id), () => setConfirming(false))}>Delete</button>
+              <button className="btn text sm" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
             </>
           ) : (
             <>
@@ -130,19 +131,19 @@ export default function Comments({ submissionId, comments, me }: { submissionId:
 
   const sorted = sortComments(comments)
   return (
-    <div className="comments">
-      <div className="lbl">Comments ({sorted.length})</div>
-      {sorted.length > 0 && (
-        <ul className="comment-list">
-          {sorted.map((c) => <CommentItem key={c.id} c={c} me={me} />)}
-        </ul>
-      )}
-      <textarea value={text} rows={3} maxLength={5000} placeholder="Add a comment (Ctrl/Cmd+Enter to post)"
-        disabled={busy} onChange={(e) => setText(e.target.value)} onKeyDown={submitOnModEnter(add)} />
-      <div className="comment-actions">
-        <button disabled={busy || !text.trim()} onClick={add}>Add</button>
-        {error && <span className="inline-error" role="alert">{error}</span>}
+    <section className="card pad" aria-label="Comments">
+      <div className="card-head"><h2>Comments <span className="muted num">{sorted.length}</span></h2></div>
+      <ul>
+        {sorted.length > 0 ? sorted.map((c) => <CommentItem key={c.id} c={c} me={me} />) : <li className="muted">No comments yet.</li>}
+      </ul>
+      <div className="composer" style={{ marginTop: 12 }}>
+        <textarea aria-label="Add a comment" value={text} rows={3} maxLength={5000} placeholder="Add a comment"
+          disabled={busy} onChange={(e) => setText(e.target.value)} onKeyDown={submitOnModEnter(add)} />
+        <div className="row-end">
+          {error ? <span className="inline-error" role="alert">{error}</span> : <span className="muted" style={{ fontSize: 12 }}>Ctrl or ⌘ + Enter to post</span>}
+          <button className="btn primary sm" disabled={busy || !text.trim()} onClick={add}>Post comment</button>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }

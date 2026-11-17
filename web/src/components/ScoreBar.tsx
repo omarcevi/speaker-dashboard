@@ -5,11 +5,15 @@ import type { Score } from '../../../functions/src/model.ts'
 
 const VALUES = [1, 2, 3, 4, 5] as const
 
-export default function ScoreBar({ submissionId, scores, me, showAll }: {
+// Your 1–5 score as a segmented control. The full version adds the team result and who gave what (spec: after you
+// score you see each person's name with their score); the compact one in the floating bar is the buttons only.
+// Pressing your current score again does nothing, so a double click can't undo it; "Clear" removes it.
+export default function ScoreBar({ submissionId, scores, me, showAll, compact = false }: {
   submissionId: string
   scores: Score[]
   me: Actor
   showAll: boolean
+  compact?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,30 +31,38 @@ export default function ScoreBar({ submissionId, scores, me, showAll }: {
     }
   }
 
-  return (
-    <div className="score-bar">
-      <span className="lbl">Your score</span>
+  const seg = (
+    <div className="seg score" role="group" aria-label="Your score">
       {VALUES.map((v) => (
-        <button key={v} className={s.mine === v ? 'score-btn selected' : 'score-btn'} aria-pressed={s.mine === v}
-          disabled={busy} onClick={() => save(v)}>{v}</button>
+        <button key={v} aria-pressed={s.mine === v} disabled={busy} onClick={() => { if (s.mine !== v) void save(v) }}>{v}</button>
       ))}
-      {s.mine !== null && (
-        <button className="link-btn" disabled={busy} onClick={() => save(null)}>clear</button>
-      )}
-      <span className="score-summary">
-        {s.revealed && s.avg !== null
-          ? `Team: ${s.avg} avg from ${s.count} ${s.count === 1 ? 'score' : 'scores'} (${s.min}–${s.max})`
-          : `${s.count} ${s.count === 1 ? 'score' : 'scores'} · score to reveal`}
-      </span>
+    </div>
+  )
+  if (compact) {
+    return <span className="mini-control">{seg}{error && <span className="inline-error" role="alert" title={error}>Not saved</span>}</span>
+  }
+
+  return (
+    <div>
+      <div className="control-label">Your score</div>
+      {seg}
+      <div className="control-note">
+        {error ? <span className="inline-error" role="alert">{error}</span>
+          : s.revealed && s.avg !== null ? (
+            <>
+              <span>Team <b className="num" style={{ color: 'var(--text)', fontWeight: 600 }}>{s.avg.toFixed(1)}</b> · {s.min === s.max ? s.min : `${s.min}–${s.max}`} · {s.count} {s.count === 1 ? 'score' : 'scores'}</span>
+              {s.mine !== null && <> · <button className="link-btn" disabled={busy} onClick={() => void save(null)}>Clear</button></>}
+            </>
+          )
+          : s.count > 0 ? `${s.count} ${s.count === 1 ? 'score' : 'scores'} so far · score to see them`
+          : 'Nobody has scored yet'}
+      </div>
       {s.revealed && s.entries.length > 0 && (
-        <details className="score-who">
-          <summary>who</summary>
-          <ul>
-            {s.entries.map((e, i) => <li key={i}>{e.name} {e.value}</li>)}
-          </ul>
+        <details className="history-list">
+          <summary>Who scored</summary>
+          <ul>{s.entries.map((e, i) => <li key={i}>{e.name} <b className="num" style={{ fontWeight: 600, color: 'var(--text)' }}>{e.value}</b></li>)}</ul>
         </details>
       )}
-      {error && <span className="inline-error" role="alert">{error}</span>}
     </div>
   )
 }

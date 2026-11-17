@@ -118,3 +118,36 @@ export function toCsv(rows: LogisticsRow[]): string {
   }
   return '﻿' + lines.join('\r\n')
 }
+
+// Form answers are a choice question; count anything that starts with the word yes (or evet) as yes.
+export const isYes = (v: string) => /^\s*(yes|evet)\b/i.test(v)
+
+// Where a speaker travels from. A yes with the city left blank says so, rather than reading as local; Istanbul only
+// when both travel questions were answered and neither is yes. Older form responses may have a city but no yes/no.
+export function comingFrom(r: Pick<LogisticsRow, 'fromAbroad' | 'abroadFrom' | 'outsideIstanbul' | 'city'>): {
+  place: string | null
+  note: 'From abroad' | 'Outside Istanbul' | null
+} {
+  const blank = (v: string) => v.trim() === ''
+  if (isYes(r.fromAbroad) || (blank(r.fromAbroad) && r.abroadFrom.trim())) {
+    return { place: r.abroadFrom.trim() || r.city.trim() || 'City not given', note: 'From abroad' }
+  }
+  if (isYes(r.outsideIstanbul) || (blank(r.outsideIstanbul) && r.city.trim())) {
+    return { place: r.city.trim() || 'City not given', note: 'Outside Istanbul' }
+  }
+  if (r.fromAbroad.trim() && r.outsideIstanbul.trim()) return { place: 'Istanbul', note: null }
+  return { place: null, note: null }
+}
+
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL']
+
+// T-shirt sizes and how many of each, in size order, unknown sizes last.
+export function tshirtCounts(sizes: string[]): [string, number][] {
+  const counts = new Map<string, number>()
+  for (const s of sizes) {
+    const k = s.trim().toUpperCase()
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const rank = (k: string) => { const i = SIZE_ORDER.indexOf(k); return i === -1 ? SIZE_ORDER.length : i }
+  return [...counts].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+}

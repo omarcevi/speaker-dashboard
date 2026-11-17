@@ -17,7 +17,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
       <main className="center-page">
         <h1>Something went wrong.</h1>
         <p className="error">{this.state.error.message}</p>
-        <button onClick={() => window.location.reload()}>Reload</button>
+        <button className="btn" onClick={() => window.location.reload()}>Reload</button>
       </main>
     )
   }

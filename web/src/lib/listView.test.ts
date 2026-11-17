@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyFilter, buildRows, readQuery, searchKey, sortRows, writeQuery, type ListFilter, type ListRow } from './listView.ts'
+import { applyFilter, buildRows, countByStatus, readQuery, searchKey, sortRows, writeQuery, type ListFilter, type ListRow } from './listView.ts'
 import { fakeReview, fakeScore, fakeSub } from './testing.ts'
 
-const defaults: ListFilter = { status: 'all', topic: null, level: null, language: null, q: '', showRemoved: false }
+const defaults: ListFilter = { status: 'all', topic: null, level: null, q: '', showRemoved: false }
 
 const subs = [
   fakeSub({ id: 'a', row: 2, speakerKey: 'k1', topicGroup: 'Web', lastName: 'KAPICI' }),
@@ -90,10 +90,34 @@ describe('query round trip', () => {
     expect(writeQuery(defaults, 'date').toString()).toBe('')
   })
   it('round-trips a non-default filter', () => {
-    const f: ListFilter = { status: 'maybe', topic: 'Web', level: 'Beginner', language: 'English', q: 'ada', showRemoved: true }
+    const f: ListFilter = { status: 'maybe', topic: 'Web', level: 'Beginner', q: 'ada', showRemoved: true }
     expect(readQuery(writeQuery(f, 'score'))).toEqual({ filter: f, sort: 'score' })
   })
   it('reads defaults from empty and ignores junk', () => {
     expect(readQuery(new URLSearchParams('status=bogus&sort=nope'))).toEqual({ filter: defaults, sort: 'date' })
+  })
+})
+
+describe('language is no longer a list filter', () => {
+  it('readQuery ignores a language param from old links', () => {
+    const { filter } = readQuery(new URLSearchParams('language=English&topic=Web'))
+    expect(filter).toEqual({ ...defaults, topic: 'Web' })
+    expect('language' in filter).toBe(false)
+  })
+  it('writeQuery never emits language', () => {
+    expect(writeQuery({ ...defaults, topic: 'Web' }, 'date').has('language')).toBe(false)
+  })
+})
+
+describe('countByStatus', () => {
+  it('counts only the rows in the current filters', () => {
+    expect(countByStatus(applyFilter(rows, { ...defaults, topic: 'Cloud' }))).toEqual({ all: 1, pending: 0, maybe: 0, approved: 1, declined: 0 })
+  })
+  it('leaves out removed rows unless they are shown', () => {
+    expect(countByStatus(applyFilter(rows, defaults))).toEqual({ all: 3, pending: 2, maybe: 0, approved: 1, declined: 0 })
+    expect(countByStatus(applyFilter(rows, { ...defaults, showRemoved: true })).all).toBe(4)
+  })
+  it('prints zeros when nothing matches', () => {
+    expect(countByStatus(applyFilter(rows, { ...defaults, q: 'no such talk' }))).toEqual({ all: 0, pending: 0, maybe: 0, approved: 0, declined: 0 })
   })
 })

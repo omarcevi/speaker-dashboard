@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="data.js"></script>
+<script src="ui.js"></script>
+<script>
+const { D, esc, initials, shell } = UI;
+const fmt = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const ACTIONS = {
+  waiting: [['Approve', 'member', false], ['Reject', 'removed', true]],
+  admin: [['Make member', 'member', false], ['Remove', 'removed', true]],
+  member: [['Make admin', 'admin', false], ['Remove', 'removed', true]],
+  removed: [['Restore', 'member', false]],
+};
+const SECTIONS = [
+  ['waiting', 'Waiting for approval', "They signed in with Google and can't see any data until you approve them.", 'Nobody is waiting.'],
+  ['admin', 'Admins', 'Can set decisions, manage the team and import from Advocu.', 'No admins.'],
+  ['member', 'Members', 'Can read every talk, score and comment.', 'No members yet.'],
+];
+const confirming = {};
+
+function person(u) {
+  const me = u.uid === D.me.uid;
+  const acts = me ? '<span class="muted">You</span>' : confirming[u.uid]
+    ? `<span class="acts"><span style="align-self:center">${esc(confirming[u.uid][0])} ${esc(u.name.split(' ')[0])}?</span><button class="btn sm" data-yes="${u.uid}">Yes</button><button class="btn sm text" data-no="${u.uid}">Cancel</button></span>`
+    : `<span class="acts">${ACTIONS[u.role].map(([label, to, confirm], i) => `<button class="btn sm${i === 0 && u.role === 'waiting' ? ' primary' : ''}" data-uid="${u.uid}" data-to="${to}" data-label="${esc(label)}" data-confirm="${confirm}">${esc(label)}</button>`).join('')}</span>`;
+  return `<li><span class="avatar">${initials(u.name)}</span><span style="min-width:0"><b>${esc(u.name)}</b><span>${esc(u.email)} · joined ${fmt(u.joined)}</span></span>${acts}</li>`;
+}
+
+function render() {
+  const group = (r) => D.team.filter((u) => u.role === r);
+  const removed = group('removed');
+  shell('team', `
+    <div class="title-row"><div><h1>Team</h1><p class="lede">${D.team.filter((u) => u.role === 'admin' || u.role === 'member').length} people can review · ${group('waiting').length} waiting</p></div></div>
+    <div class="settings">
+      ${SECTIONS.map(([r, title, about, empty]) => `<section class="setting">
+        <div class="about"><h2>${title} <span class="muted num">${group(r).length}</span></h2><p>${about}</p></div>
+        <div class="card pad"><ul class="people">${group(r).length ? group(r).map(person).join('') : `<li style="display:block" class="muted">${empty}</li>`}</ul></div>
+      </section>`).join('')}
+      <section class="setting">
+        <div class="about"><h2>Removed <span class="muted num">${removed.length}</span></h2><p>Lost access. Their past scores and comments stay.</p></div>
+        <div class="card pad"><ul class="people">${removed.length ? removed.map(person).join('') : '<li style="display:block" class="muted">Nobody removed.</li>'}</ul></div>
+      </section>
+    </div>`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.yes) { const u = D.team.find((x) => x.uid === b.dataset.yes); u.role = confirming[u.uid][1]; delete confirming[u.uid]; return render(); }
+  if (b.dataset.no) { delete confirming[b.dataset.no]; return render(); }
+  if (b.dataset.uid) {
+    const u = D.team.find((x) => x.uid === b.dataset.uid);
+    if (b.dataset.confirm === 'true') confirming[u.uid] = [b.dataset.label, b.dataset.to]; else u.role = b.dataset.to;
+    render();
+  }
+});
+render();
+</script>
+</body>
+</html>

@@ -15,10 +15,10 @@ export default function AdvocuDetails({ advocu, sources }: { advocu: Details; so
   ]
   return (
     <>
-      <div className="lbl">{sources.includes('form') ? 'Also on Advocu' : 'From Advocu'}</div>
-      <dl className="advocu-details">
+      <h3>{sources.includes('form') ? 'Also on Advocu' : 'From Advocu'}</h3>
+      <dl className="kv" style={{ gridTemplateColumns: '160px minmax(0, 1fr)', marginTop: 6 }}>
         {fields.filter(([, v]) => v.trim()).map(([k, v]) => (
-          <div key={k}><dt className="muted">{k}</dt><dd>{v}</dd></div>
+          <div key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{v}</dd></div>
         ))}
       </dl>
     </>
