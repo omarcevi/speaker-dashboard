@@ -1,15 +1,8 @@
-import { Link } from 'react-router-dom'
-import type { Review, Submission } from '../../../functions/src/model.ts'
-import { statusOf } from '../lib/status.ts'
+import { useState } from 'react'
+import type { Submission } from '../../../functions/src/model.ts'
+import { comingFrom } from '../lib/logistics.ts'
+import { IconLink, IconMail, IconPhone } from './Icons.tsx'
 import SpeakerPhoto from './SpeakerPhoto.tsx'
-import StatusChip from './StatusChip.tsx'
-
-interface Props {
-  sub: Submission
-  others: Submission[]
-  reviews: Map<string, Review>
-  query: string
-}
 
 const LINKS = [
   ['linkedin', 'LinkedIn'],
@@ -24,60 +17,62 @@ const CONSENTS = [
   ['personalData', 'Personal data'],
 ] as const
 
-function Details({ label, text }: { label: string; text: string }) {
-  if (!text.trim()) return null
+export function CopyButton({ text, label }: { text: string; label: string }) {
+  const [done, setDone] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setDone(true)
+      setTimeout(() => setDone(false), 1200)
+    } catch {
+      // clipboard blocked: the value is still selectable on screen
+    }
+  }
+  return <button type="button" className="copy" aria-label={done ? `Copied the ${label}` : `Copy ${label}`} aria-live="polite" onClick={() => void copy()}>{done ? 'Copied' : 'Copy'}</button>
+}
+
+// Email and phone with Copy, then the profile links. Hidden in projector view (the whole room can see the screen).
+export function ContactList({ email, phone, links }: { email: string; phone: string; links?: Submission['links'] }) {
+  const shown = links ? LINKS.filter(([k]) => links[k]) : []
+  if (!email && !phone && shown.length === 0) return null
   return (
-    <details>
-      <summary>{label}</summary>
-      <p className="prose">{text}</p>
-    </details>
+    <ul className="contact ruled" aria-label="Contact details">
+      {email && <li><IconMail /><a href={`mailto:${email}`}>{email}</a><CopyButton text={email} label="email" /></li>}
+      {phone && <li><IconPhone /><a href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a><CopyButton text={phone} label="phone number" /></li>}
+      {links && shown.map(([k, label]) => (
+        <li key={k}><IconLink /><a href={links[k]} target="_blank" rel="noopener noreferrer">{label} <span className="muted">{links[k].replace(/^https?:\/\/(www\.)?[^/]+\/?/, '') || links[k]}</span></a><span /></li>
+      ))}
+    </ul>
   )
 }
 
-export default function SpeakerPanel({ sub, others, reviews, query }: Props) {
-  const from = sub.logistics.abroadFrom || sub.logistics.city
-  const role = [sub.jobTitle, sub.company].filter(Boolean).join(' · ')
+function More({ label, text, open = false }: { label: string; text: string; open?: boolean }) {
+  if (!text.trim()) return null
+  return <details className="more" open={open}><summary>{label}</summary><p>{text}</p></details>
+}
+
+export default function SpeakerPanel({ sub }: { sub: Submission }) {
+  const name = `${sub.firstName} ${sub.lastName}`.trim()
+  const role = [sub.jobTitle, sub.company].filter(Boolean).join(', ')
+  const from = comingFrom(sub.logistics)
   return (
-    <section className="speaker-panel">
+    <section className="card pad" aria-label="Speaker">
       <div className="speaker-head">
-        <SpeakerPhoto key={sub.photoFileId ?? 'none'} fileId={sub.photoFileId} url={sub.photoUrl} />
-        <div>
-          <b>{sub.firstName} {sub.lastName}</b>
-          {role && <div className="muted">{role}</div>}
-        </div>
+        <SpeakerPhoto key={sub.photoFileId ?? 'none'} fileId={sub.photoFileId} url={sub.photoUrl} name={name} />
+        <div><b>{name}</b>{role && <span className="muted">{role}</span>}</div>
       </div>
-      <div className="chips">
-        {LINKS.map(([key, label]) => sub.links[key] && (
-          <a key={key} className="chip" href={sub.links[key]} target="_blank" rel="noopener noreferrer">{label} ↗</a>
+      <ContactList email={sub.email} phone={sub.phone} links={sub.links} />
+      <dl className="kv" style={{ margin: '16px 0' }}>
+        <dt>GDE</dt><dd>{sub.gde || <span className="dash">—</span>}</dd>
+        <dt>Coming from</dt><dd>{from.place ? <>{from.place}{from.note && <span className="muted"> · {from.note}</span>}</> : <span className="dash">—</span>}</dd>
+        {CONSENTS.map(([k, label]) => (
+          <div key={k} style={{ display: 'contents' }}><dt>{label}</dt><dd>{sub.consent[k] || <span className="muted">Not answered</span>}</dd></div>
         ))}
-        {sub.gde && <span className="chip">GDE: {sub.gde}</span>}
-        {from && <span className="chip">From: {from}</span>}
-      </div>
-      {sub.speakingExperience.trim() && (
-        <>
-          <div className="lbl">Speaking experience</div>
-          <p className="prose">{sub.speakingExperience}</p>
-        </>
-      )}
-      <Details label="Bio" text={sub.bio} />
-      <Details label="Why DevFest Istanbul" text={sub.whyDevFest} />
-      <Details label="Anything to tell us" text={sub.anythingElse} />
-      <div className="lbl">Consent</div>
-      <div className="chips">
-        {CONSENTS.map(([key, label]) => (
-          <span key={key} className="chip">{label}: {sub.consent[key] || 'not answered'}</span>
-        ))}
-      </div>
-      {others.length > 0 && (
-        <>
-          <div className="lbl">Other submissions ({others.length})</div>
-          {others.map((o) => (
-            <Link key={o.id} className="other-talk" to={`/talk/${o.id}${query ? `?${query}` : ''}`}>
-              <StatusChip status={statusOf(reviews, o.id)} /> {o.title}
-            </Link>
-          ))}
-        </>
-      )}
+      </dl>
+      <More label="Bio" text={sub.bio} />
+      <More label="Speaking experience" text={sub.speakingExperience} open />
+      <More label="Why DevFest Istanbul" text={sub.whyDevFest} />
+      <More label="Anything else" text={sub.anythingElse} />
     </section>
   )
 }

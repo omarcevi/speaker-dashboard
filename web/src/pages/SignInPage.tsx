@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider.tsx'
+import { Mark } from '../components/Icons.tsx'
 
 export default function SignInPage() {
   const { signIn } = useAuth()
@@ -15,11 +16,14 @@ export default function SignInPage() {
   }
 
   return (
-    <main className="center-page">
-      <h1>Speaker Dashboard</h1>
-      <p>Sign in with your Google account to review submissions.</p>
-      <button className="primary" onClick={onClick}>Sign in with Google</button>
-      {error && <p className="error">{error}</p>}
+    <main className="solo">
+      <div className="card">
+        <div className="mark" style={{ padding: 0 }}><Mark /></div>
+        <h1>Sign in to review talks</h1>
+        <p>For the DevFest Istanbul organizing team. New people get access once an admin approves them.</p>
+        <button className="btn primary google-btn" onClick={() => void onClick()}>Sign in with Google</button>
+        {error && <p className="error" role="alert">{error}</p>}
+      </div>
     </main>
   )
 }

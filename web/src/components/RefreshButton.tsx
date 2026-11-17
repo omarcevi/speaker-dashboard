@@ -5,13 +5,13 @@ import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { functions } from '../firebase.ts'
 import { describeSync } from '../lib/syncStatus.ts'
+import { IconRefresh } from './Icons.tsx'
 
-export default function RefreshButton() {
-  const { me } = useAuth()
+// The sync stamp and the button that runs the sheet sync now.
+export default function RefreshButton({ label = 'Refresh', stamp = true }: { label?: string; stamp?: boolean }) {
   const { sync } = useData()
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
-  const isAdmin = me?.role === 'admin'
   const info = describeSync(sync)
 
   async function refresh() {
@@ -27,17 +27,25 @@ export default function RefreshButton() {
   }
 
   return (
-    <div className="refresh">
-      <button onClick={() => void refresh()} disabled={busy}>{busy ? 'Syncing…' : 'Refresh'}</button>
-      <span className="muted">{info.lastSynced}</span>
-      {failure && <span className="error">Refresh failed: {failure}</span>}
-      {isAdmin && info.error && <span className="error">Sync error: {info.error}</span>}
-      {isAdmin && info.missingColumns.length > 0 && (
-        <span className="error">Missing columns: {info.missingColumns.join(', ')}</span>
-      )}
-      {isAdmin && (
-        <span className="muted">Don't sort or delete rows in the Form Responses tab; use filter views.</span>
-      )}
+    <div className="actions">
+      {failure ? <span className="error" role="alert">Refresh failed: {failure}</span> : stamp && <span className="stamp">{info.lastSynced}</span>}
+      <button className="btn" onClick={() => void refresh()} disabled={busy}><IconRefresh />{busy ? 'Syncing…' : label}</button>
+    </div>
+  )
+}
+
+// Admins only: the last sync's error and any missing sheet columns. Nothing when the sync is healthy.
+export function SyncProblems() {
+  const { me } = useAuth()
+  const { sync } = useData()
+  const info = describeSync(sync)
+  if (me?.role !== 'admin' || (!info.error && info.missingColumns.length === 0)) return null
+  return (
+    <div className="notice" role="status" style={{ marginTop: 16 }}>
+      <span>
+        {info.error && <>Sync error: {info.error}. </>}
+        {info.missingColumns.length > 0 && <>Missing sheet columns: {info.missingColumns.join(', ')}.</>}
+      </span>
     </div>
   )
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Status } from '../../../functions/src/model.ts'
 import { setStatus, type Actor } from '../data/actions.ts'
+import StatusChip from './StatusChip.tsx'
+import StatusHistory from './StatusHistory.tsx'
 
 const CHOICES: { status: Status; label: string }[] = [
   { status: 'approved', label: 'Approve' },
@@ -8,11 +10,21 @@ const CHOICES: { status: Status; label: string }[] = [
   { status: 'declined', label: 'Decline' },
 ]
 
-export default function DecisionBar({ submissionId, status, me }: { submissionId: string; status: Status; me: Actor }) {
+// Admins decide with a segmented control; members see the status. Pressing the current decision again does nothing,
+// so a double click can't undo it; going back to Pending is the explicit "Reset to pending" link. The full version adds
+// the status pill and the latest change; the compact one in the floating bar is the buttons only.
+export default function DecisionBar({ submissionId, status, me, admin, compact = false }: {
+  submissionId: string
+  status: Status
+  me: Actor
+  admin: boolean
+  compact?: boolean
+}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const choose = async (to: Status) => {
+    if (to === status) return
     setBusy(true)
     setError(null)
     try {
@@ -24,19 +36,31 @@ export default function DecisionBar({ submissionId, status, me }: { submissionId
     }
   }
 
+  const seg = admin ? (
+    <div className="seg decide" role="group" aria-label="Decision">
+      {CHOICES.map(({ status: c, label }) => (
+        <button key={c} className={`st-${c}`} aria-pressed={status === c} disabled={busy} onClick={() => void choose(c)}>
+          <span className="dot" />{label}
+        </button>
+      ))}
+    </div>
+  ) : <StatusChip status={status} />
+  if (compact) {
+    return <span className="mini-control">{seg}{error && <span className="inline-error" role="alert" title={error}>Not saved</span>}</span>
+  }
+
   return (
-    <div className="decision-bar">
-      <div className="decision-btns">
-        <span className="lbl">Decision</span>
-        {CHOICES.map(({ status: c, label }) => (
-          <button key={c} className={status === c ? 'decision-btn current' : 'decision-btn'}
-            style={{ background: `var(--st-${c})` }} aria-pressed={status === c}
-            disabled={busy} onClick={() => choose(c)}>{label}</button>
-        ))}
-        {status !== 'pending' && (
-          <button className="link-btn" disabled={busy} onClick={() => choose('pending')}>Reset to Pending</button>
+    <div>
+      <div className="control-label">Decision</div>
+      {seg}
+      <div className="control-note">
+        {error ? <span className="inline-error" role="alert">{error}</span> : (
+          <>
+            {admin && <StatusChip status={status} />}
+            <StatusHistory key={submissionId} submissionId={submissionId} />
+            {admin && status !== 'pending' && <> · <button className="link-btn" disabled={busy} onClick={() => void choose('pending')}>Reset to pending</button></>}
+          </>
         )}
-        {error && <span className="inline-error" role="alert">{error}</span>}
       </div>
     </div>
   )

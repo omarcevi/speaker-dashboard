@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthProvider.tsx'
 import { gate } from './auth/gate.ts'
-import { DataProvider } from './data/DataProvider.tsx'
+import { DataProvider, useData } from './data/DataProvider.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
 import Nav from './components/Nav.tsx'
 import ImportPage from './pages/ImportPage.tsx'
@@ -13,6 +13,11 @@ import SignInPage from './pages/SignInPage.tsx'
 import TeamPage from './pages/TeamPage.tsx'
 import WaitingPage from './pages/WaitingPage.tsx'
 
+function DataBanner() {
+  const { error } = useData()
+  return error ? <div className="banner" role="alert">{error}</div> : null
+}
+
 function Shell() {
   const { state, me, error, signOut } = useAuth()
   const g = gate(state, me?.role ?? null)
@@ -21,7 +26,7 @@ function Shell() {
     return (
       <main className="center-page">
         <p className="error">{error}</p>
-        <button onClick={() => void signOut()}>Sign out</button>
+        <button className="btn" onClick={() => void signOut()}>Sign out</button>
       </main>
     )
   }
@@ -31,9 +36,11 @@ function Shell() {
 
   return (
     <DataProvider>
-      <Nav />
-      <main className="content">
-        <Routes>
+      <div className="app">
+        <Nav />
+        <main className="canvas">
+          <DataBanner />
+          <Routes>
           <Route path="/" element={<ListPage />} />
           <Route path="/talk/:id" element={<MeetingPage />} />
           <Route path="/logistics" element={<LogisticsPage />} />
@@ -41,8 +48,9 @@ function Shell() {
           <Route path="/team" element={me?.role === 'admin' ? <TeamPage /> : <Navigate to="/" replace />} />
           <Route path="/import" element={me?.role === 'admin' ? <ImportPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+          </Routes>
+        </main>
+      </div>
     </DataProvider>
   )
 }
