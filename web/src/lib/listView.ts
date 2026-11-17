@@ -15,7 +15,6 @@ export interface ListFilter {
   status: Status | 'all'
   topic: string | null
   level: string | null
-  language: string | null
   q: string
   showRemoved: boolean
 }
@@ -54,10 +53,16 @@ export function applyFilter<T extends Submission>(rows: ListRow<T>[], f: ListFil
     if (f.status !== 'all' && status !== f.status) return false
     if (f.topic !== null && sub.topicGroup !== f.topic) return false
     if (f.level !== null && sub.level !== f.level) return false
-    if (f.language !== null && sub.language !== f.language) return false
     if (q === '') return true
     return [sub.title, sub.firstName, sub.lastName, sub.company, sub.email].some((v) => searchKey(v).includes(q))
   })
+}
+
+// Status counts for the rows in view, so the count cards follow the search, topic, level and removed-row filters.
+export function countByStatus(rows: ListRow[]): Record<Status | 'all', number> {
+  const counts = { all: rows.length, pending: 0, maybe: 0, approved: 0, declined: 0 }
+  for (const r of rows) counts[r.status]++
+  return counts
 }
 
 export function sortRows<T extends Submission>(rows: ListRow<T>[], key: SortKey): ListRow<T>[] {
@@ -83,7 +88,6 @@ export function readQuery(p: URLSearchParams): { filter: ListFilter; sort: SortK
       status: STATUSES.includes(status as Status) ? (status as Status) : 'all',
       topic: p.get('topic') || null,
       level: p.get('level') || null,
-      language: p.get('language') || null,
       q: p.get('q') ?? '',
       showRemoved: p.get('removed') === '1',
     },
@@ -96,7 +100,6 @@ export function writeQuery(filter: ListFilter, sort: SortKey): URLSearchParams {
   if (filter.status !== 'all') p.set('status', filter.status)
   if (filter.topic) p.set('topic', filter.topic)
   if (filter.level) p.set('level', filter.level)
-  if (filter.language) p.set('language', filter.language)
   if (filter.q) p.set('q', filter.q)
   if (filter.showRemoved) p.set('removed', '1')
   if (sort !== 'date') p.set('sort', sort)

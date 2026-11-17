@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { comingFrom, isYes, tshirtCounts } from './logistics.ts'
 import { logisticsRows, toCsv, type LogisticsRow } from './logistics.ts'
 import { buildCards } from './cards.ts'
 import { fakeReview, fakeSub } from './testing.ts'
@@ -178,5 +179,52 @@ describe('toCsv', () => {
   it('keeps real phone numbers in the phone column only', () => {
     expect(toCsv([row({ phone: '+90 555 000 0000' })])).toContain(',"+90 555 000 0000",')
     expect(toCsv([row({ phone: '=1+1' })])).toContain(`,"'=1+1",`)
+  })
+})
+
+describe('isYes', () => {
+  it('accepts yes and evet in any case, with trailing words', () => {
+    for (const v of ['Yes', 'yes', ' YES ', 'Yes, please', 'Evet']) expect(isYes(v)).toBe(true)
+  })
+  it('rejects no, blanks and words that only start with the letters', () => {
+    for (const v of ['No', '', '  ', 'Yesterday', 'Maybe']) expect(isYes(v)).toBe(false)
+  })
+})
+
+describe('comingFrom', () => {
+  const r = (o: Partial<Record<'fromAbroad' | 'abroadFrom' | 'outsideIstanbul' | 'city', string>>) =>
+    ({ fromAbroad: '', abroadFrom: '', outsideIstanbul: '', city: '', ...o })
+  it('names the city abroad', () => {
+    expect(comingFrom(r({ fromAbroad: 'Yes', abroadFrom: 'Berlin, Germany' }))).toEqual({ place: 'Berlin, Germany', note: 'From abroad' })
+  })
+  it('says the city is missing instead of calling a traveller local', () => {
+    expect(comingFrom(r({ fromAbroad: 'Yes' }))).toEqual({ place: 'City not given', note: 'From abroad' })
+    expect(comingFrom(r({ fromAbroad: 'No', outsideIstanbul: 'Yes' }))).toEqual({ place: 'City not given', note: 'Outside Istanbul' })
+  })
+  it('names the Turkish city for someone outside Istanbul', () => {
+    expect(comingFrom(r({ fromAbroad: 'No', outsideIstanbul: 'Yes', city: 'Ankara' }))).toEqual({ place: 'Ankara', note: 'Outside Istanbul' })
+  })
+  it('is Istanbul only when both questions were answered no', () => {
+    expect(comingFrom(r({ fromAbroad: 'No', outsideIstanbul: 'No' }))).toEqual({ place: 'Istanbul', note: null })
+    expect(comingFrom(r({ fromAbroad: 'No' }))).toEqual({ place: null, note: null })
+    expect(comingFrom(r({}))).toEqual({ place: null, note: null })
+  })
+  it('an explicit no beats a leftover city', () => {
+    expect(comingFrom(r({ fromAbroad: 'No', abroadFrom: 'Berlin', outsideIstanbul: 'No', city: 'Ankara' }))).toEqual({ place: 'Istanbul', note: null })
+  })
+  it('an abroad yes with only the other city field filled uses that city', () => {
+    expect(comingFrom(r({ fromAbroad: 'Yes', city: 'Tbilisi' }))).toEqual({ place: 'Tbilisi', note: 'From abroad' })
+  })
+  it('trusts a filled-in city even when the yes/no answer is missing (older form version)', () => {
+    expect(comingFrom(r({ abroadFrom: 'Lyon, France' }))).toEqual({ place: 'Lyon, France', note: 'From abroad' })
+  })
+})
+
+describe('tshirtCounts', () => {
+  it('counts sizes in size order, case-insensitively, ignoring blanks', () => {
+    expect(tshirtCounts(['L', 'm', 'XL', '', 'S', 'M', 'xs'])).toEqual([['XS', 1], ['S', 1], ['M', 2], ['L', 1], ['XL', 1]])
+  })
+  it('puts unknown sizes last, alphabetically', () => {
+    expect(tshirtCounts(['Kids', 'M', 'Fitted M'])).toEqual([['M', 1], ['FITTED M', 1], ['KIDS', 1]])
   })
 })

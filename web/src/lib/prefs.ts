@@ -33,3 +33,21 @@ export function saveOverviewOpen(v: boolean) {
     // storage unavailable; the choice just won't persist
   }
 }
+
+const PROJECTOR_KEY = 'projectorView'
+
+export function loadProjector(): boolean {
+  try {
+    return localStorage.getItem(PROJECTOR_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function saveProjector(v: boolean) {
+  try {
+    localStorage.setItem(PROJECTOR_KEY, String(v))
+  } catch {
+    // storage unavailable; the choice just won't persist
+  }
+}
