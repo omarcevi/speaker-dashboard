@@ -75,7 +75,7 @@ function Row({ email, admin, firstName, onOpen }: { email: Email; admin: boolean
   if (email.state === 'failed') {
     extra = (
       <>
-        <div className="alert notice"><span><b>Not sent:</b> {reason || 'Gmail refused it'}.{admin && ' If the error could have come after Gmail took it, check the Sent folder before retrying.'}</span></div>
+        <div className="alert notice"><span><b>Not sent:</b> {reason || 'Gmail refused it'}.{admin && ' Nothing went out, so Retry is safe.'}</span></div>
         {admin && <div className="acts"><button className="btn sm" disabled={busy} onClick={() => void run('retry', () => retryEmail(email.id))}>Retry</button></div>}
       </>
     )
