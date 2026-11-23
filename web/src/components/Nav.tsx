@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { db } from '../firebase.ts'
 import { initials } from '../lib/initials.ts'
-import { IconBag, IconList, IconMap, IconMenu, IconOut, IconTeam, IconUpload, Mark } from './Icons.tsx'
+import { IconBag, IconList, IconMail, IconMap, IconMenu, IconOut, IconTeam, IconUpload, Mark } from './Icons.tsx'
 
 // Admins only: how many people are waiting for approval, shown on the Team link.
 function useWaitingCount(admin: boolean): number {
@@ -56,6 +56,7 @@ export default function Nav() {
           <Item to="/" end icon={<IconList />} label="Submissions" />
           <Item to="/map" icon={<IconMap />} label="Topic map" />
           <Item to="/logistics" icon={<IconBag />} label="Logistics" />
+          <Item to="/emails" icon={<IconMail />} label="Emails" />
           {admin && (
             <>
               <div className="group">Admin</div>

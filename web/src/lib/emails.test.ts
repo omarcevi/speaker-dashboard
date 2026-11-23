@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
-import { emailsBySpeaker, lastDecisionEmail, latestLine, needsLook, stateLabel, toIstanbulMs } from './emails.ts'
+import {
+  ago, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
+  previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
+} from './emails.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
 
@@ -81,6 +84,12 @@ describe('latestLine', () => {
     expect(latestLine(email(), thread({ lastReplyAt: ts(REPLY), lastTeamAt: ts(TEAM), lastSnippet: 'See you' }), 'Priya'))
       .toBe('Answered by the team · 19 Nov, 11:30 · See you')
   })
+  it('counts a tie as answered, like needsLook', () => {
+    const t = thread({ lastReplyAt: ts(REPLY), lastTeamAt: ts(REPLY), lastSnippet: 'Ok' })
+    expect(latestLine(email(), t, 'Priya')).toBe('Answered by the team · 19 Nov, 09:12 · Ok')
+    expect(needsLook(email(), t)).toBe(false)
+    expect(speakerWroteLast(t)).toBe(false)
+  })
   it('shows no reply yet', () => {
     expect(latestLine(email(), thread(), 'Priya')).toBe('No reply yet')
     expect(latestLine(email(), undefined, 'Priya')).toBe('No reply yet')
@@ -102,5 +111,106 @@ describe('lastDecisionEmail', () => {
     const pending = email({ state: 'scheduled', sentAt: null })
     expect(lastDecisionEmail([old, other, recent, pending])).toBe(recent)
     expect(lastDecisionEmail([other, pending])).toBeUndefined()
+  })
+})
+
+describe('stateTone', () => {
+  it('keeps chips neutral by kind', () => {
+    expect(stateTone(email())).toBe('')
+    expect(stateTone(email({ replyCount: 1 }))).toBe('strong')
+    expect(stateTone(email({ replyCount: 1, bounce: { reason: 'x', at: ts(0) } }))).toBe('warn')
+    expect(stateTone(email({ state: 'held' }))).toBe('warn')
+    expect(stateTone(email({ state: 'scheduled' }))).toBe('line')
+  })
+})
+
+describe('lastActivity', () => {
+  it('takes the newest of send, reply and team times', () => {
+    expect(lastActivity(email({ createdAt: ts(1), sentAt: ts(5) }), undefined)).toBe(5)
+    expect(lastActivity(email({ createdAt: ts(1), sentAt: ts(5) }), thread({ lastReplyAt: ts(9), lastTeamAt: ts(7) }))).toBe(9)
+    expect(lastActivity(email({ state: 'scheduled', createdAt: ts(1), sentAt: null, sendAt: ts(20) }), undefined)).toBe(20)
+  })
+})
+
+describe('isListed', () => {
+  it('folds dashboard replies into their conversation unless they need a look', () => {
+    expect(isListed(email())).toBe(true)
+    expect(isListed(email({ replyToThreadId: 'th1' }))).toBe(false)
+    expect(isListed(email({ replyToThreadId: 'th1', state: 'failed' }))).toBe(true)
+  })
+})
+
+describe('linkParts', () => {
+  it('splits out links and leaves trailing punctuation', () => {
+    expect(linkParts('See https://example.com/a. Thanks')).toEqual([
+      { text: 'See ' }, { text: 'https://example.com/a', href: 'https://example.com/a' }, { text: '. Thanks' },
+    ])
+    expect(linkParts('no links')).toEqual([{ text: 'no links' }])
+    expect(linkParts('')).toEqual([])
+  })
+})
+
+describe('displayName', () => {
+  it('reads the name from a From header', () => {
+    expect(displayName('Ada Lovelace <ada@example.com>')).toBe('Ada Lovelace')
+    expect(displayName('"Ada L." <ada@example.com>')).toBe('Ada L.')
+    expect(displayName('<ada@example.com>')).toBe('ada@example.com')
+    expect(displayName('ada@example.com')).toBe('ada@example.com')
+  })
+})
+
+describe('safeFileName', () => {
+  it('keeps safe characters and collapses the rest', () => {
+    expect(safeFileName('Slide template (v2).pptx')).toBe('Slide template -v2-.pptx')
+    expect(safeFileName('a/../b.pdf')).toBe('a-..-b.pdf')
+    expect(safeFileName('Şişli harita.pdf')).toBe('-i-li harita.pdf')
+    expect(safeFileName('///')).toBe('-')
+    expect(safeFileName('..')).toBe('file')
+  })
+})
+
+describe('formatBytes', () => {
+  it('formats sizes', () => {
+    expect(formatBytes(500)).toBe('500 B')
+    expect(formatBytes(640 * 1024)).toBe('640 KB')
+    expect(formatBytes(4.2 * 1024 * 1024)).toBe('4.2 MB')
+  })
+})
+
+describe('eventKeyOf', () => {
+  it('derives a camelCase key from a label', () => {
+    expect(eventKeyOf('Wi-Fi password')).toBe('wiFiPassword')
+    expect(eventKeyOf('  Speaker check-in ')).toBe('speakerCheckIn')
+    expect(eventKeyOf('2nd venue')).toBe('ndVenue')
+    expect(eventKeyOf('')).toBe('')
+  })
+})
+
+describe('ago', () => {
+  it('says how long ago', () => {
+    const now = Date.UTC(2026, 10, 24, 12, 0)
+    expect(ago(now - 20_000, now)).toBe('just now')
+    expect(ago(now - 3 * 60_000, now)).toBe('3 min ago')
+    expect(ago(now - 125 * 60_000, now)).toBe('2 h ago')
+    expect(ago(now - 3 * 86_400_000, now)).toMatch(/2026/)
+  })
+})
+
+describe('previewSegments', () => {
+  it('marks filled, unknown and empty fill-ins', () => {
+    expect(previewSegments('Hi {{ firstName }}, {{venue}} {{nope}}!', { firstName: 'Ada', venue: ' ' })).toEqual([
+      { kind: 'text', text: 'Hi ' }, { kind: 'fill', text: 'Ada' }, { kind: 'text', text: ', ' },
+      { kind: 'bad', text: '{{venue}}', why: 'empty' }, { kind: 'text', text: ' ' },
+      { kind: 'bad', text: '{{nope}}', why: 'unknown' }, { kind: 'text', text: '!' },
+    ])
+  })
+})
+
+describe('emptyEventFillIns and unknownFillIns', () => {
+  const fields = [{ key: 'venue', label: 'Venue', value: '' }, { key: 'eventName', label: 'Event name', value: 'DevFest' }]
+  it('finds empty event settings and unknown names', () => {
+    const t = { subject: '{{eventName}}', body: 'Hi {{firstName}}, at {{venue}} {{wifi}}' }
+    expect(emptyEventFillIns(t, fields)).toEqual(['venue'])
+    expect(unknownFillIns(t, fields)).toEqual(['wifi'])
   })
 })

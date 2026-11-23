@@ -1,7 +1,8 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
-import { ref, uploadBytes } from 'firebase/storage'
+import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import type { EmailTemplate, EventField, RecipientRule, Role, Status, TemplateAttachment } from '../../../functions/src/model.ts'
 import { db, storage } from '../firebase.ts'
+import { safeFileName } from '../lib/emails.ts'
 
 export interface Actor { uid: string; name: string }
 
@@ -79,10 +80,14 @@ export async function deleteTemplate(id: string): Promise<void> {
   await deleteDoc(doc(db, 'templates', id))
 }
 
+// A fresh id for a template not saved yet, so its attachments have a folder before the first save.
+export const newTemplateId = (): string => doc(collection(db, 'templates')).id
+
 export async function uploadTemplateAttachment(templateId: string, file: File): Promise<TemplateAttachment> {
-  const path = `emailAttachments/${templateId}/${Date.now()}-${file.name}`
-  await uploadBytes(ref(storage, path), file, { contentType: file.type || 'application/octet-stream' })
-  return { path, name: file.name, size: file.size, contentType: file.type || 'application/octet-stream' }
+  const name = safeFileName(file.name)
+  const path = `emailAttachments/${templateId}/${Date.now()}-${name}`
+  await uploadBytes(storageRef(storage, path), file, { contentType: file.type || 'application/octet-stream' })
+  return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
 }
 
 export async function saveEvent(fields: EventField[], me: Actor): Promise<void> {
