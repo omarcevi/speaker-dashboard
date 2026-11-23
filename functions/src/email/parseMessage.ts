@@ -47,7 +47,12 @@ export function decodeHeader(v: string): string {
     })
 }
 
-/** Splits an address list on commas outside quotes and angle brackets; returns lower-cased addresses. */
+const ENCODED_WORD = /=\?[^?\s]+\?[BbQq]\?[^?\s]*\?=/y
+
+/**
+ * Splits a raw (undecoded) address header on commas outside quotes, angle brackets and encoded words;
+ * returns lower-cased addresses. Decoding first would let an encoded "Last, First" name split the list.
+ */
 export function addresses(v: string): string[] {
   const out: string[] = []
   let cur = ''
@@ -55,6 +60,11 @@ export function addresses(v: string): string[] {
   let inAngle = false
   for (let i = 0; i < v.length; i++) {
     const c = v[i]
+    if (c === '=' && !inQuote) {
+      ENCODED_WORD.lastIndex = i
+      const w = ENCODED_WORD.exec(v)
+      if (w) { cur += w[0]; i += w[0].length - 1; continue }
+    }
     if (c === '\\' && inQuote) { cur += c + (v[++i] ?? ''); continue }
     if (c === '"') inQuote = !inQuote
     else if (!inQuote && c === '<') inAngle = true
@@ -64,7 +74,7 @@ export function addresses(v: string): string[] {
   out.push(cur)
   return out
     .map(a => {
-      const angle = /<([^<>]*)>/.exec(a.replace(/"(?:\\.|[^"\\])*"/g, ''))
+      const angle = /<([^<>]*)>/.exec(a.replace(/"(?:\\.|[^"\\])*"/g, '').replace(/=\?[^?\s]+\?[BbQq]\?[^?\s]*\?=/g, ''))
       return (angle ? angle[1] : a).trim().toLowerCase()
     })
     .filter(Boolean)
@@ -129,19 +139,22 @@ export function htmlToText(html: string): string {
     .replace(new RegExp(`</?(?:${BLOCK})\\b[^>]*>`, 'gi'), '\n')
     .replace(/<[^>]*>/g, '')
     .replace(/<[a-z/!?][^>]*$/i, '')
-  return tidy(decodeEntities(text).replace(/\u00a0/g, ' '))
+  // HTML whitespace was collapsed above, so a leading space on a line is layout, not indentation.
+  return tidy(decodeEntities(text.replace(/^ +/gm, '')).replace(/\u00a0/g, ' '))
 }
 
-/** Trims each line, collapses 3+ newlines to a blank line, trims the whole. */
+/** Strips trailing whitespace per line (keeping indentation), collapses 3+ newlines, drops blank lines at both ends. */
 const tidy = (s: string) =>
-  s.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/, '').replace(/^ +/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  s.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\s+$/g, '')
 
 const ATTRIBUTION = [/^On .+ wrote:$/, /^\d{1,2} .+ tarihinde .+ şunu yazdı:$/]
 
 /** Splits plain text into the new part and the quoted earlier messages. */
 export function splitQuoted(text: string): { text: string; quoted: string } {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
-  let at = lines.findIndex(l => ATTRIBUTION.some(r => r.test(l.trim())))
+  const isAttribution = (l: string) => ATTRIBUTION.some(r => r.test(l.trim()))
+  // Clients wrap long attributions ("On … <" / "addr> wrote:"), so also try each line joined with the next.
+  let at = lines.findIndex((l, i) => isAttribution(l) || (i + 1 < lines.length && isAttribution(`${l.trim()} ${lines[i + 1].trim()}`)))
   if (at < 0) {
     let end = lines.length
     while (end > 0 && lines[end - 1].trim() === '') end--
@@ -168,37 +181,37 @@ function bounceReason(status: string | null, text: string): string {
       if (m?.[1].trim()) return m[1].trim()
     }
   }
-  return text.slice(0, BOUNCE_REASON_MAX)
+  return [...text].slice(0, BOUNCE_REASON_MAX).join('')
 }
 
-export function parseMessage(m: GmailMessage, sender: string): ParsedMessage {
+/** `sender` is the dashboard mailbox; kept for the interface, classification relies on the SENT label (Ruling 6). */
+export function parseMessage(m: GmailMessage, _sender: string): ParsedMessage {
   const payload: Part = m.payload ?? {}
-  const from = addresses(decodeHeader(headerOf(payload, 'From')))[0] ?? ''
+  const from = addresses(headerOf(payload, 'From'))[0] ?? ''
   const walked = walk(payload, { plain: null, html: null, status: null, attachments: [] })
 
-  const body = walked.plain !== null
-    ? splitQuoted(walked.plain)
-    : walked.html !== null
-      ? (splitGmailQuote(walked.html) ?? splitQuoted(htmlToText(walked.html)))
-      : { text: '', quoted: '' }
+  const plainSplit = walked.plain !== null ? splitQuoted(walked.plain) : null
+  const htmlSplit = walked.html !== null ? splitGmailQuote(walked.html) : null
+  const body = plainSplit && (plainSplit.quoted || !htmlSplit)
+    ? plainSplit
+    : htmlSplit ?? (walked.html !== null ? splitQuoted(htmlToText(walked.html)) : { text: '', quoted: '' })
 
   const contentType = headerOf(payload, 'Content-Type')
   const isReport = mime(payload) === 'multipart/report' && param(contentType, 'report-type').toLowerCase() === 'delivery-status'
   const daemon = /^(mailer-daemon|postmaster)@/.test(from)
+  const hasStatus = hasPart(payload, ['message/delivery-status', 'message/global-delivery-status'])
+  // Ruling 6: From can be forged, so only Gmail's SENT label makes a team message, and a bounce
+  // needs both the daemon sender and a delivery-status report.
   const kind: ReceivedMessage['kind'] =
-    m.labelIds?.includes('SENT') || from === sender.trim().toLowerCase()
-      ? 'team'
-      : isReport || (daemon && hasPart(payload, ['message/delivery-status', 'message/global-delivery-status']))
-        ? 'bounce'
-        : 'reply'
+    m.labelIds?.includes('SENT') ? 'team' : daemon && (isReport || hasStatus) ? 'bounce' : 'reply'
 
   const internal = Number(m.internalDate)
   const dated = Date.parse(headerOf(payload, 'Date'))
   return {
     kind,
     from,
-    to: addresses(decodeHeader(headerOf(payload, 'To'))),
-    cc: addresses(decodeHeader(headerOf(payload, 'Cc'))),
+    to: addresses(headerOf(payload, 'To')),
+    cc: addresses(headerOf(payload, 'Cc')),
     subject: decodeHeader(headerOf(payload, 'Subject')),
     text: body.text,
     quoted: body.quoted,

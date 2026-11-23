@@ -40,10 +40,37 @@ describe('buildRaw', () => {
     expect(header(msg, 'Message-ID')).toBe('<abc@example.com>')
   })
 
-  it('keeps ASCII display names readable and quotes specials', () => {
-    const msg = decode(buildRaw({ ...base, to: 'Doe, Jane <jane@example.com>', cc: ['Bo <bo@example.com>', 'cy@example.com'] }))
-    expect(header(msg, 'To')).toBe('"Doe, Jane" <jane@example.com>')
-    expect(header(msg, 'Cc')).toBe('Bo <bo@example.com>, cy@example.com')
+  it('keeps ASCII From names readable, quotes specials, lists bare To/Cc', () => {
+    const msg = decode(buildRaw({ ...base, from: 'Doe, Jane <jane@example.com>', cc: ['bo@example.com', 'cy@example.com'] }))
+    expect(header(msg, 'From')).toBe('"Doe, Jane" <jane@example.com>')
+    expect(header(msg, 'To')).toBe('ada@example.com')
+    expect(header(msg, 'Cc')).toBe('bo@example.com, cy@example.com')
+  })
+
+  it('rejectsInvalidAddresses', () => {
+    const bad = ['', 'ada', 'a@b@example.com', 'Ada <ada@example.com>', 'ada@example.com, bo@example.com', 'ada @example.com',
+      'ada@example.com\r\nBcc: x@evil.test', '<ada@example.com>', 'ada@exa"mple.com']
+    for (const a of bad) {
+      expect(() => buildRaw({ ...base, to: a }), a).toThrow(/Invalid to address/)
+      expect(() => buildRaw({ ...base, cc: ['ok@example.com', a] }), a).toThrow(/Invalid cc address/)
+    }
+    for (const f of ['Team <a@b@example.com>', 'Team <team@example.com>\r\nBcc: x@evil.test', 'Team <>', 'team example.com']) {
+      expect(() => buildRaw({ ...base, from: f }), f).toThrow(/Invalid from address/)
+    }
+    expect(() => buildRaw({ ...base, from: 'team@example.com', to: 'first.last+tag@sub.example.com' })).not.toThrow()
+  })
+
+  it('truncatesLongFilenamesKeepingExtension', () => {
+    const long = 'Konuşmacı-'.repeat(40) + '.pdf'
+    const emoji = '😀'.repeat(200) + '.pptx'
+    const ascii = 'a'.repeat(400) + '.pdf'
+    const msg = decode(buildRaw({ ...base, attachments: [long, emoji, ascii].map(name => ({ name, contentType: 'application/pdf', data: Buffer.from('x') })) }))
+    for (const line of msg.split('\r\n')) expect(line.length).toBeLessThan(998)
+    expect(msg).toContain(`filename="${'a'.repeat(146)}.pdf"`)
+    const star = [...msg.matchAll(/filename\*=UTF-8''(\S+)/g)].map(m => decodeURIComponent(m[1]))
+    expect(star).toHaveLength(2)
+    expect(star[0].endsWith('.pdf') && [...star[0]].length <= 150 && star[0].startsWith('Konuşmacı-')).toBe(true)
+    expect(star[1].endsWith('.pptx') && Buffer.byteLength(star[1]) <= 300).toBe(true)
   })
 
   it('omits Cc when empty', () => {
@@ -78,7 +105,7 @@ describe('buildRaw', () => {
     expect(Buffer.from(body(inner[0]), 'base64').toString('utf8')).toBe('Merhaba Ayşe\r\nİkinci satır')
     expect(Buffer.from(body(inner[1]), 'base64').toString('utf8')).toBe(base.html)
 
-    expect(parts[1]).toContain('Content-Disposition: attachment; filename="speaker-guide.pdf"')
+    expect(parts[1]).toContain('Content-Disposition: attachment;\r\n filename="speaker-guide.pdf"')
     expect(parts[1]).toContain('Content-Type: application/pdf')
     const lines = body(parts[1]).split('\r\n')
     expect(lines.slice(0, -1).every(l => l.length === 76)).toBe(true)
@@ -99,8 +126,6 @@ describe('buildRaw', () => {
     const msg = decode(buildRaw({
       ...base,
       subject: 'Hi\r\nBcc: x@evil.test',
-      to: 'ada@example.com\nBcc: y@evil.test',
-      cc: ['bo@example.com\r\n\r\nbody'],
       inReplyTo: '<a@example.com>\r\nBcc: z@evil.test',
       references: '<a@example.com>\nX-Evil: 1',
     }))
@@ -108,7 +133,10 @@ describe('buildRaw', () => {
     expect(names).not.toContain('bcc')
     expect(names).not.toContain('x-evil')
     expect(header(msg, 'Subject')).toBe('Hi Bcc: x@evil.test')
-    expect(header(msg, 'Content-Type')).toMatch(/^multipart\/mixed/) // a blank line in Cc did not end the headers early
+    expect(header(msg, 'In-Reply-To')).toBe('<a@example.com> Bcc: z@evil.test')
+    expect(header(msg, 'Content-Type')).toMatch(/^multipart\/mixed/)
+    // CR/LF in an address is refused outright (see rejectsInvalidAddresses)
+    expect(() => buildRaw({ ...base, cc: ['bo@example.com\r\n\r\nbody'] })).toThrow()
   })
 })
 

@@ -92,9 +92,34 @@ describe('parseMessage', () => {
     expect(tail.text).toBe('Yes please.')
     expect(tail.quoted).toBe('> earlier\n>\n> more')
 
+    const wrapped = parseMessage(msg(leaf('text/plain', 'Fine.\n\nOn Mon, Nov 23, 2026 at 10:00 AM DevFest Team <\nteam@example.com> wrote:\n\n> Your talk')), SENDER)
+    expect(wrapped.text).toBe('Fine.')
+    expect(wrapped.quoted).toBe('On Mon, Nov 23, 2026 at 10:00 AM DevFest Team <\nteam@example.com> wrote:\n\n> Your talk')
+
+    const indented = parseMessage(msg(leaf('text/plain', 'Agenda:\n  1. Intro\n    code()  \n')), SENDER)
+    expect(indented.text).toBe('Agenda:\n  1. Intro\n    code()')
+
     const inline = parseMessage(msg(leaf('text/plain', '> question?\nanswer')), SENDER)
     expect(inline.text).toBe('> question?\nanswer')
     expect(inline.quoted).toBe('')
+  })
+
+  it('reportFromNormalSenderIsReply', () => {
+    expect(parseMessage(msg(report(dsn)), SENDER).kind).toBe('reply')
+    expect(parseMessage(msg(report(dsn)), SENDER).bounceReason).toBeNull()
+  })
+
+  it('htmlQuoteUsedWhenPlainHasNoMarker', () => {
+    const r = parseMessage(msg({
+      mimeType: 'multipart/alternative',
+      headers: h({ 'Content-Type': 'multipart/alternative; boundary="b"' }),
+      parts: [
+        leaf('text/plain', 'Sounds good.\n\nYour talk was accepted.'),
+        leaf('text/html', '<div>Sounds good.</div><div class="gmail_quote gmail_quote_container"><blockquote class="gmail_quote">Your talk was accepted.</blockquote></div>'),
+      ],
+    }), SENDER)
+    expect(r.text).toBe('Sounds good.')
+    expect(r.quoted).toBe('Your talk was accepted.')
   })
 
   it('bounceNeedsReport', () => {
@@ -122,7 +147,7 @@ describe('parseMessage', () => {
     expect(r.text).not.toContain('Original body')
     expect(r.attachments).toEqual([])
 
-    const statusOnly = parseMessage(msg(report('Final-Recipient: rfc822; nobody@example.com\r\nStatus: 5.2.2\r\n')), SENDER)
+    const statusOnly = parseMessage(msg(report('Final-Recipient: rfc822; nobody@example.com\r\nStatus: 5.2.2\r\n'), { From: 'MAILER-DAEMON@mx.example.com' }), SENDER)
     expect(statusOnly.kind).toBe('bounce')
     expect(statusOnly.bounceReason).toBe('5.2.2')
 
@@ -133,11 +158,33 @@ describe('parseMessage', () => {
     expect(r3.bounceReason).toBe("Address not found\nYour message wasn't delivered to nobody@example.com.")
   })
 
+  it('bounceReasonFallbackSlicesCodePoints', () => {
+    const p = report('Action: failed\r\n')
+    p.parts![0] = leaf('text/plain', '😀'.repeat(400))
+    const r = parseMessage(msg(p, { From: 'mailer-daemon@mx.example.com' }), SENDER)
+    expect(r.kind).toBe('bounce')
+    expect([...r.bounceReason!]).toHaveLength(300)
+    expect(r.bounceReason).toBe('😀'.repeat(300))
+  })
+
   it('teamMessageBySentLabel', () => {
     const byLabel = parseMessage(msg(leaf('text/plain', 'From Gmail'), { From: 'Other Organiser <org@example.com>' }, ['SENT']), SENDER)
     expect(byLabel.kind).toBe('team')
-    const byFrom = parseMessage(msg(leaf('text/plain', 'From Gmail'), { From: 'DevFest Team <Team@Example.com>' }), SENDER)
-    expect(byFrom.kind).toBe('team')
-    expect(byFrom.from).toBe('team@example.com')
+  })
+
+  it('forgedSenderFromIsReply', () => {
+    const forged = parseMessage(msg(leaf('text/plain', 'Please send your bank details'), { From: 'DevFest Team <Team@Example.com>' }), SENDER)
+    expect(forged.kind).toBe('reply')
+    expect(forged.from).toBe('team@example.com')
+  })
+
+  it('encodedLastFirstNamesDoNotSplit', () => {
+    const enc = (s: string) => '=?UTF-8?B?' + Buffer.from(s).toString('base64') + '?='
+    const r = parseMessage(msg(leaf('text/plain', 'Hi'), {
+      From: `${enc('Yılmaz, Ayşe')} <Ayse@Example.com>`,
+      To: `${enc('Öztürk, Can')} <can@example.com>, "Doe, Jane" <jane@example.com>, =?UTF-8?Q?Team,_X?= <team@example.com>`,
+    }), SENDER)
+    expect(r.from).toBe('ayse@example.com')
+    expect(r.to).toEqual(['can@example.com', 'jane@example.com', 'team@example.com'])
   })
 })

@@ -65,30 +65,30 @@ function foldHeader(name: string, tokens: string[]): string {
 }
 
 const ATEXT_PHRASE = /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]*$/
+/** One bare addr-spec: one @, no whitespace, CR/LF, commas, angle brackets, quotes or other specials. */
+const ADDR_SPEC = /^[^\s@<>,;:"()[\]\\]+@[^\s@<>,;:"()[\]\\]+$/
 
-/** Tokens for one address: display name (encoded when non-ASCII, quoted when it has specials) + <addr>. */
-function addressTokens(input: string): string[] {
-  const v = oneLine(input).trim()
-  const m = /^(.*?)\s*<([^<>]*)>$/.exec(v)
-  if (!m) return [v]
-  let name = m[1].trim()
-  const addr = m[2].trim()
+function checkAddress(addr: string, field: string): string {
+  if (!ADDR_SPEC.test(addr)) throw new Error(`Invalid ${field} address`)
+  return addr
+}
+
+/** From: an optional display name (encoded when non-ASCII, quoted when it has specials) + <addr>. */
+function fromTokens(input: string): string[] {
+  const m = /^\s*(.*?)\s*<([^<>]*)>\s*$/.exec(input)
+  if (!m) return [checkAddress(input.trim(), 'from')]
+  const addr = `<${checkAddress(m[2], 'from')}>`
+  let name = oneLine(m[1]).trim()
   if (/^".*"$/.test(name)) name = name.slice(1, -1).replace(/\\(.)/g, '$1')
-  if (!name) return [`<${addr}>`]
-  if (!isAscii(name)) return [...encodedWords(name), `<${addr}>`]
-  if (ATEXT_PHRASE.test(name)) return [...name.split(' ').filter(Boolean), `<${addr}>`]
-  return [`"${name.replace(/(["\\])/g, '\\$1')}"`, `<${addr}>`]
+  if (!name) return [addr]
+  if (!isAscii(name)) return [...encodedWords(name), addr]
+  if (ATEXT_PHRASE.test(name)) return [...name.split(' ').filter(Boolean), addr]
+  return [`"${name.replace(/(["\\])/g, '\\$1')}"`, addr]
 }
 
-function addressListTokens(list: string[]): string[] {
-  const out: string[] = []
-  list.forEach((a, i) => {
-    const t = addressTokens(a)
-    if (i < list.length - 1) t[t.length - 1] += ','
-    out.push(...t)
-  })
-  return out
-}
+/** To/Cc: bare addresses only; anything else throws. */
+const addressListTokens = (list: string[], field: string): string[] =>
+  list.map((a, i) => checkAddress(a, field) + (i < list.length - 1 ? ',' : ''))
 
 const base64Lines = (data: Buffer) => (data.toString('base64').match(/.{1,76}/g) ?? []).join(CRLF)
 const crlf = (s: string) => s.replace(/\r\n|\r|\n/g, CRLF)
@@ -103,13 +103,30 @@ const rfc2231 = (v: string) =>
 
 const quoted = (v: string) => `"${v.replace(/(["\\])/g, '\\$1')}"`
 
+const NAME_MAX_CHARS = 150
+const NAME_MAX_BYTES = 300
+
+/** Shortens a filename to 150 code points and 300 UTF-8 bytes, keeping its extension, so header lines stay far below 998 chars. */
+export function shortFilename(name: string): string {
+  const chars = [...name]
+  const fits = (c: string[]) => c.length <= NAME_MAX_CHARS && Buffer.byteLength(c.join(''), 'utf8') <= NAME_MAX_BYTES
+  if (fits(chars)) return name
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 && [...name.slice(dot)].length <= 16 ? [...name.slice(dot)] : []
+  const stem = chars.slice(0, chars.length - ext.length)
+  while (stem.length && !fits([...stem, ...ext])) stem.pop()
+  return [...stem, ...ext].join('')
+}
+
 function attachmentPart(a: { name: string; contentType: string; data: Buffer }): string {
-  const name = oneLine(a.name).trim() || 'attachment'
+  const name = shortFilename(oneLine(a.name).trim() || 'attachment')
   const type = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(a.contentType.trim()) ? a.contentType.trim() : 'application/octet-stream'
   const ascii = isAscii(name)
   return [
-    `Content-Type: ${type}; name=${ascii ? quoted(name) : quoted(encodedWords(name).join(' '))}`,
-    `Content-Disposition: attachment; ${ascii ? `filename=${quoted(name)}` : `filename*=UTF-8''${rfc2231(name)}`}`,
+    `Content-Type: ${type};`,
+    ` name=${ascii ? quoted(name) : quoted(encodedWords(name).join(' '))}`,
+    'Content-Disposition: attachment;',
+    ` ${ascii ? `filename=${quoted(name)}` : `filename*=UTF-8''${rfc2231(name)}`}`,
     'Content-Transfer-Encoding: base64',
     '',
     base64Lines(a.data),
@@ -127,9 +144,9 @@ export function buildRaw(m: OutgoingMessage): string {
   const mixed = boundary('mixed')
   const alt = boundary('alt')
   const headers = [
-    foldHeader('From', addressTokens(m.from)),
-    foldHeader('To', addressTokens(m.to)),
-    ...(m.cc.length ? [foldHeader('Cc', addressListTokens(m.cc))] : []),
+    foldHeader('From', fromTokens(m.from)),
+    foldHeader('To', addressListTokens([m.to], 'to')),
+    ...(m.cc.length ? [foldHeader('Cc', addressListTokens(m.cc, 'cc'))] : []),
     foldHeader('Subject', textTokens(oneLine(m.subject))),
     `Date: ${new Date().toUTCString().replace(/GMT$/, '+0000')}`,
     foldHeader('Message-ID', [oneLine(m.messageId).trim()]),
