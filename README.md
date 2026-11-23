@@ -4,7 +4,7 @@ The DevFest Istanbul 2026 team uses this dashboard to review CFP submissions. Sp
 
 Stack: React + Vite (`web/`), Cloud Functions 2nd gen on Node 22 in `europe-west1` (`functions/`), Firestore, Storage, Hosting and Auth (Google provider).
 
-Sending email is not part of v1. See "Phase 2: Emails (parked)" in `docs/superpowers/specs/2026-10-29-speaker-dashboard-design.md`.
+Admins can also email speakers from the dashboard (acceptance, decline and other templates), and replies and bounces show up there. See [Email setup](#email-setup) and `docs/superpowers/specs/2026-11-23-speaker-email-design.md`.
 
 ## Local development
 
@@ -26,6 +26,7 @@ Create two local env files. Git ignores both.
   SYNC_SERVICE_ACCOUNT=cfp-sync@demo-cfp.iam.gserviceaccount.com
   ```
   `SHEET_ID=fake` makes Refresh read the built-in fake sheet instead of Google Sheets.
+  The emulator never sends real email: it uses an in-memory fake Gmail, and `MAIL_SENDER` defaults to `speakers@example.org`.
 - `web/.env.local`:
   ```
   VITE_FIREBASE_API_KEY=dummy
@@ -43,7 +44,8 @@ Then run each of these in its own terminal:
 npm run build --prefix functions
 npx firebase emulators:start --only auth,firestore,functions,storage --project demo-cfp
 
-# 2. Seed: 12 fake Form rows, 3 fake Advocu applications, 3 users and fake AI results
+# 2. Seed: 12 fake Form rows, 3 fake Advocu applications, 3 users, fake AI results,
+#    the email templates and a few sample emails (a sent acceptance with a reply, a bounce, a scheduled email)
 cd functions && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npx tsx scripts/seed-emulator.ts
 
 # 3. Web app at http://localhost:5173
@@ -113,6 +115,40 @@ You do these steps once, in the Firebase and Google Cloud consoles.
      ```
    - No CLI? In the Firebase console, go to Firestore → `users` → your document and set `role` to `admin`.
    - Reload the page. From then on, approve everyone else from the **Team** page.
+
+## Email setup
+
+Emails go out from a real Workspace mailbox (for example the team's speakers address), through the `cfp-sync` service account with domain-wide delegation. No key file is needed. The owner does these steps once:
+
+1. **Enable the APIs:** the **Gmail API** and the **IAM Service Account Credentials API**.
+   ```bash
+   gcloud services enable gmail.googleapis.com iamcredentials.googleapis.com --project speaker-dashboard-9c149
+   ```
+2. **Let `cfp-sync` sign for itself.** Grant the sync service account `roles/iam.serviceAccountTokenCreator` on itself:
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com \
+     --member=serviceAccount:cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com \
+     --role=roles/iam.serviceAccountTokenCreator --project speaker-dashboard-9c149
+   ```
+3. **Domain-wide delegation.** Get the service account's client id (a number):
+   ```bash
+   gcloud iam service-accounts describe cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com --format='value(oauth2ClientId)'
+   ```
+   As a Workspace super admin, open the Google Admin console (admin.google.com) → **Security** → **Access and data control** → **API controls** → **Manage domain-wide delegation** → **Add new**. Paste the client id and these two scopes, comma-separated, exactly:
+   ```
+   https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.readonly
+   ```
+4. **Set `MAIL_SENDER`.** Add the mailbox address to `functions/.env`:
+   ```
+   MAIL_SENDER=<the speaker mailbox, a user in your Workspace>
+   ```
+5. **Deploy functions and rules** when ready:
+   ```bash
+   npx firebase deploy --only functions,firestore:rules,storage --project speaker-dashboard-9c149
+   ```
+   This adds the send queue (every minute) and the reply check (every 5 minutes). Within a minute, the send queue creates the **Acceptance** and **Decline** templates with placeholder text, and empty event settings (event name, date, venue). Fill in the event settings and edit the templates before sending.
+
+Locally, the emulator also has two admin-only callables for testing: `devInjectMail({ threadId, kind: 'reply' | 'bounce', text })` adds a fake reply or bounce to a thread, and `devRunMail()` runs the send queue and the reply check once. Neither is deployed.
 
 ## AI assist
 

@@ -263,8 +263,10 @@ async function writeScheduled(
 
 interface Prepared { raw: string; messageId: string }
 
+type Sendable = Pick<EmailDoc, 'to' | 'cc' | 'subject' | 'text' | 'templateId' | 'attachments' | 'replyToThreadId'>
+
 /** Reads the attachments and reply headers and builds the message. Throws on anything that must not be sent. */
-async function prepare(e: EmailDoc, gmail: GmailClient, opts: ProcessOpts): Promise<Prepared> {
+async function prepare(e: Sendable, gmail: GmailClient, opts: Pick<ProcessOpts, 'sender' | 'readAttachment'>): Promise<Prepared> {
   if (e.subject === null || e.text === null) throw new Error('Email was not written')
   const folder = e.templateId === null ? null : `emailAttachments/${e.templateId}/`
   const attachments: { name: string; contentType: string; data: Buffer }[] = []
@@ -377,6 +379,16 @@ export const cancelEmail = (db: Firestore, id: string, actor: Actor) =>
   transition(db, id, ['scheduled', 'queued', 'held'], 'Emails can be cancelled only before sending',
     () => ({ state: 'cancelled', reason: `Cancelled by ${actor.name}` }))
 
+/**
+ * By hand, after a look: `failed` → `queued` as it was written (Gmail refused it, nothing was sent); `held` → `scheduled`
+ * due now, so the next run writes it again and re-checks who it may go to.
+ */
+export const retryEmail = (db: Firestore, id: string, _actor: Actor, now: number = Date.now()) =>
+  transition(db, id, ['failed', 'held'], 'Only a failed or held email can be retried', (e) =>
+    e.state === 'failed'
+      ? { state: 'queued', reason: null, claimedAt: null }
+      : { state: 'scheduled', reason: null, claimedAt: null, sendAt: Timestamp.fromMillis(now) })
+
 export async function rescheduleEmail(db: Firestore, id: string, sendAt: number, _actor: Actor): Promise<void> {
   if (!Number.isFinite(sendAt)) throw new QueueRefused('Invalid send time')
   await transition(db, id, ['scheduled'], 'Only a scheduled email can be re-timed', () => ({ sendAt: Timestamp.fromMillis(sendAt) }))
@@ -389,4 +401,33 @@ export async function resolveUnknown(db: Firestore, id: string, to: 'sent' | 're
     to === 'sent'
       ? { state: 'sent', reason: `Marked as sent by ${actor.name}`, sentAt: e.claimedAt ?? Timestamp.now() }
       : { state: 'queued', reason: null, claimedAt: null })
+}
+
+export interface TestEmailInput {
+  templateId: string | null; custom: { subject: string; body: string } | null; speakerKey: string; followUp?: boolean
+}
+
+/**
+ * "Send test to me": the speaker's email as it would be written now, sent only to `to` (the admin) with "[TEST] " in
+ * front of the subject, never CC'd and not recorded anywhere. Refuses when the speaker couldn't get it.
+ */
+export async function sendTestEmail(
+  db: Firestore, gmail: GmailClient, input: TestEmailInput, to: string, opts: Pick<ProcessOpts, 'sender' | 'readAttachment'>,
+): Promise<void> {
+  if ((input.templateId === null) === (input.custom === null)) throw new QueueRefused('Pick a template or write a custom email')
+  const template = input.templateId === null ? null : await templateOf(db, input.templateId)
+  const source = template ?? input.custom!
+  if (source.subject.trim() === '') throw new QueueRefused('A custom email needs a subject')
+  const loaded = await loadSpeakers(db)
+  const g = loaded.groups.find((x) => x.speakerKey === input.speakerKey)
+  const c = compose(template?.rule ?? 'anyone', source, g, loaded, {
+    templateId: input.templateId, followUp: input.followUp ?? false, includeCc: false, render: true,
+  })
+  if (!c.ok) throw new QueueRefused(c.reason)
+  const p = await prepare({
+    to, cc: [], subject: `[TEST] ${c.subject}`, text: c.text, templateId: input.templateId,
+    attachments: template?.attachments ?? [], replyToThreadId: null,
+  }, gmail, opts)
+  await gmail.send(p.raw)
+  console.log(`Email test sent for template ${input.templateId ?? 'custom'}`)
 }

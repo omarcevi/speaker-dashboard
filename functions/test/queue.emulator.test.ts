@@ -4,7 +4,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { EmailDoc, EmailTemplate, Status, ThreadDoc } from '../src/model.js'
 import {
-  cancelEmail, enqueue, markEmailed, processQueue, rescheduleEmail, resolveUnknown, type EnqueueInput,
+  cancelEmail, enqueue, markEmailed, processQueue, rescheduleEmail, resolveUnknown, retryEmail, sendTestEmail, type EnqueueInput,
 } from '../src/email/queue.js'
 import { fakeGmail, type FakeGmail } from '../src/testing/fakeGmail.js'
 import { fakeSubmission } from '../src/testing/fakeSubmission.js'
@@ -291,5 +291,68 @@ describe('queue', () => {
     await expect(enqueue(db, input({
       batchId: 'reply2', templateId: null, custom: { subject: '', body: 'Hi' }, speakerKeys: [GRACE], replyToThreadId: 'fake-thread-1',
     }), admin, T0)).rejects.toThrow()
+  })
+  it('retry puts a failed email back in the queue with its content', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    const id = idFor('b1', ADA)
+    gmail.failNext(new Error('Gmail send failed (500)'))
+    await run(T0)
+    const failed = await email(id)
+    await retryEmail(db, id, admin)
+    const retried = await email(id)
+    expect(retried).toMatchObject({ state: 'queued', reason: null, claimedAt: null, subject: failed.subject, text: failed.text })
+    expect(retried.sendAt.toMillis()).toBe(failed.sendAt.toMillis())
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 0, unknown: 0 })
+    expect(gmail.sent).toHaveLength(1)
+    expect(await email(id)).toMatchObject({ state: 'sent', gmailMessageId: 'fake-msg-1' })
+  })
+
+  it('retry re-checks a held email at the next run', async () => {
+    await enqueue(db, input({ sendAt: T0 + 60 * MIN }), admin, T0)
+    await setVenue('')
+    expect(await run(T0 + 61 * MIN)).toEqual({ sent: 0, failed: 0, held: 2, unknown: 0 })
+    await setVenue('Hall C')
+    await retryEmail(db, idFor('b1', ADA), admin, T0 + 70 * MIN)
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'scheduled', reason: null })
+    expect((await email(idFor('b1', ADA))).sendAt.toMillis()).toBe(T0 + 70 * MIN)
+    await setStatus('row-3', 'pending')
+    await retryEmail(db, idFor('b1', GRACE), admin, T0 + 70 * MIN)
+    expect(await run(T0 + 70 * MIN)).toEqual({ sent: 1, failed: 0, held: 1, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'sent', text: 'Your talks:\n• Fake Engines\n\nVenue: Hall C' })
+    expect(await email(idFor('b1', GRACE))).toMatchObject({ state: 'held', reason: 'Not ready: a talk is still pending or maybe' })
+  })
+
+  it('retry refuses any other state', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    const id = idFor('b1', ADA)
+    await expect(retryEmail(db, id, admin)).rejects.toThrow('Only a failed or held email can be retried')
+    await run(T0)
+    await expect(retryEmail(db, id, admin)).rejects.toThrow('Only a failed or held email can be retried')
+    await expect(retryEmail(db, 'nope', admin)).rejects.toThrow('Email not found')
+    expect(gmail.sent).toHaveLength(1)
+  })
+
+  it('test email goes to the caller only, with [TEST] subject and attachments, and is not recorded', async () => {
+    const pdf = { name: 'Guide.pdf', size: 3, contentType: 'application/pdf' }
+    await template('t-acc', { attachments: [{ path: 'emailAttachments/t-acc/guide.pdf', ...pdf }] })
+    const opts = { sender: SENDER, readAttachment: async () => Buffer.from('pdf') }
+    await sendTestEmail(db, gmail, { templateId: 't-acc', custom: null, speakerKey: ADA }, 'me@example.com', opts)
+    expect(gmail.sent).toHaveLength(1)
+    const raw = gmail.sent[0].raw
+    expect(header(raw, 'To')).toBe('me@example.com')
+    expect(header(raw, 'Cc')).toBeUndefined()
+    expect(header(raw, 'Subject')).toBe('[TEST] Welcome Ada')
+    expect(plainText(raw)).toContain('Venue: Hall A')
+    expect(rawText(raw)).toContain('filename="Guide.pdf"')
+    expect((await db.collection('emails').get()).size).toBe(0)
+    expect((await db.collection('threads').get()).size).toBe(0)
+
+    await sendTestEmail(db, gmail, { templateId: null, custom: { subject: 'Hello {{firstName}}', body: 'Hi' }, speakerKey: GRACE },
+      'me@example.com', opts)
+    expect(header(gmail.sent[1].raw, 'Subject')).toBe('[TEST] Hello Grace')
+    await setStatus('row-2', 'pending')
+    await expect(sendTestEmail(db, gmail, { templateId: 't-acc', custom: null, speakerKey: ADA }, 'me@example.com', opts))
+      .rejects.toThrow('Not ready')
+    expect(gmail.sent).toHaveLength(2)
   })
 })
