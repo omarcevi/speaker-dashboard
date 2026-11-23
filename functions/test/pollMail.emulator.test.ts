@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { EmailDoc, MailMeta, ReceivedMessage, ThreadDoc } from '../src/model.js'
@@ -64,10 +64,10 @@ async function sentEmail(id: string, threadId: string, gmailMessageId: string, s
   await db.doc(`emails/${id}`).set(doc)
 }
 
-async function thread(threadId: string, firstSentAt: number, seenIds: string[]) {
+async function thread(threadId: string, firstSentAt: number, seenIds: string[], lastTeamAt = firstSentAt) {
   const doc: ThreadDoc = {
     speakerKey: ADA, firstSentAt: Timestamp.fromMillis(firstSentAt), lastCheckedAt: null, seenIds, lastReplyAt: null,
-    lastTeamAt: Timestamp.fromMillis(firstSentAt), lastSnippet: 'Hello Ada',
+    lastTeamAt: Timestamp.fromMillis(lastTeamAt), lastSnippet: 'Hello Ada',
   }
   await db.doc(`threads/${threadId}`).set(doc)
 }
@@ -166,18 +166,82 @@ describe('pollMail', () => {
   })
 
   it('old threads not polled', async () => {
-    // th-1 was first sent at T0, 91 days before `now`; th-new 89 days before.
+    // At `now`: th-1's only send was 91 days ago (not polled); th-new was first sent 100 days ago but the dashboard
+    // replied into it 10 days ago, so it is polled.
     const now = T0 + 91 * DAY
-    await sentEmail('e-new', 'th-new', 'g-new', T0 + 2 * DAY)
-    await thread('th-new', T0 + 2 * DAY, ['g-new'])
+    await sentEmail('e-new', 'th-new', 'g-new', now - 100 * DAY)
+    await sentEmail('e-new2', 'th-new', 'g-new2', now - 10 * DAY)
+    await thread('th-new', now - 100 * DAY, ['g-new', 'g-new2'], now - 10 * DAY)
     gmail.addReply('th-new', textMessage('g-new-r', 'th-new', { from: ADA, text: 'Recent reply', at: now - HOUR }))
     gmail.addReply('th-1', textMessage('g-r1', 'th-1', { from: ADA, text: 'Late reply', at: now - HOUR }))
 
     expect(await poll(now)).toEqual({ threads: 1, replies: 1, bounces: 0 })
     expect(Object.keys(await messages('th-new'))).toEqual(['g-new-r'])
+    expect((await email('e-new2')).replyCount).toBe(1)
+    expect((await email('e-new')).replyCount).toBe(0)
     expect(await messages('th-1')).toEqual({})
     expect((await threadDoc('th-1')).lastCheckedAt).toBeNull()
     expect((await email('e1')).replyCount).toBe(0)
+  })
+
+  it('a thread with a dashboard email in flight is deferred whole', async () => {
+    // e2 reached Gmail (g-sent-2) but its id is not recorded yet; a bounce for it has already arrived.
+    await sentEmail('e2', 'th-1', 'g-sent-2', T0 + HOUR)
+    await db.doc('emails/e2').update({ state: 'sending', gmailMessageId: null, sentAt: null })
+    gmail.addReply('th-1', textMessage('g-sent-2', 'th-1', { from: SENDER, text: 'Reminder', at: T0 + HOUR, sent: true }))
+    gmail.addReply('th-1', bounceMessage('g-b1', 'th-1', T0 + HOUR + MIN))
+
+    expect(await poll(T0 + 2 * HOUR)).toEqual({ threads: 1, replies: 0, bounces: 0 })
+    expect(await messages('th-1')).toEqual({})
+    const t = await threadDoc('th-1')
+    expect(t.seenIds).toEqual(['g-sent-1'])
+    expect(t.lastCheckedAt!.toMillis()).toBe(T0 + 2 * HOUR)
+    expect((await email('e1')).bounce).toBeNull()
+
+    // Recorded as sent (without merging seenIds, as if that write lagged): the SENT copy is skipped by gmailMessageId,
+    // the bounce goes to e2 and a genuine teammate message is stored.
+    await db.doc('emails/e2').update({ state: 'sent', gmailMessageId: 'g-sent-2', sentAt: Timestamp.fromMillis(T0 + HOUR) })
+    gmail.addReply('th-1', textMessage('g-team-1', 'th-1', { from: SENDER, text: 'Checking the address.', at: T0 + 3 * HOUR, sent: true }))
+    expect(await poll(T0 + 4 * HOUR)).toEqual({ threads: 1, replies: 0, bounces: 1 })
+    const stored = await messages('th-1')
+    expect(Object.keys(stored).sort()).toEqual(['g-b1', 'g-team-1'])
+    expect(stored['g-team-1'].kind).toBe('team')
+    expect((await email('e2')).bounce!.at.toMillis()).toBe(T0 + HOUR + MIN)
+    expect((await email('e1')).bounce).toBeNull()
+    expect((await threadDoc('th-1')).seenIds.sort()).toEqual(['g-b1', 'g-sent-1', 'g-sent-2', 'g-team-1'])
+  })
+
+  it('an email in unknown state does not defer the thread', async () => {
+    await sentEmail('e2', 'th-1', 'g-sent-2', T0 + HOUR)
+    await db.doc('emails/e2').update({ state: 'unknown', gmailMessageId: null, sentAt: null })
+    gmail.addReply('th-1', textMessage('g-r1', 'th-1', { from: ADA, text: 'Reply', at: T0 + 2 * HOUR }))
+    expect(await poll(T0 + 3 * HOUR)).toEqual({ threads: 1, replies: 1, bounces: 0 })
+    expect((await email('e1')).replyCount).toBe(1)
+  })
+
+  it('two polls in parallel count a reply once', async () => {
+    gmail.addReply('th-1', textMessage('g-r1', 'th-1', { from: ADA, text: 'Reply', at: T0 + HOUR }))
+    const [a, b] = await Promise.all([poll(T0 + 2 * HOUR), poll(T0 + 2 * HOUR)])
+    expect(a.replies + b.replies).toBe(1)
+    expect(Object.keys(await messages('th-1'))).toEqual(['g-r1'])
+    expect((await email('e1')).replyCount).toBe(1)
+    expect((await threadDoc('th-1')).seenIds.sort()).toEqual(['g-r1', 'g-sent-1'])
+  })
+
+  it('a huge reply is stored truncated and does not block the thread', async () => {
+    const huge = 'x'.repeat(2 * 1024 * 1024)
+    gmail.addReply('th-1', textMessage('g-big', 'th-1', { from: ADA, text: huge, at: T0 + HOUR }))
+    expect(await poll(T0 + 2 * HOUR)).toEqual({ threads: 1, replies: 1, bounces: 0 })
+    const big = (await messages('th-1'))['g-big']
+    expect(big.truncated).toBe(true)
+    expect(big.text).toHaveLength(200_000)
+    expect((await threadDoc('th-1')).lastSnippet).toBe('x'.repeat(140))
+
+    gmail.addReply('th-1', textMessage('g-r2', 'th-1', { from: ADA, text: 'Small follow-up', at: T0 + 3 * HOUR }))
+    expect(await poll(T0 + 4 * HOUR)).toEqual({ threads: 1, replies: 1, bounces: 0 })
+    const stored = await messages('th-1')
+    expect(stored['g-r2']).not.toHaveProperty('truncated')
+    expect((await email('e1')).replyCount).toBe(2)
   })
 
   it('a thread that cannot be read does not stop the others', async () => {
@@ -191,13 +255,25 @@ describe('pollMail', () => {
         return gmail.getThread(id)
       },
     }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(await poll(T0 + 2 * HOUR, failing)).toEqual({ threads: 2, replies: 1, bounces: 0 })
+    expect(logged.mock.calls).toEqual([['Mail poll: thread th-1 could not be read (http 500)']])
+    logged.mockRestore()
     expect(Object.keys(await messages('th-2'))).toEqual(['g-r2'])
-    expect((await meta()).error).toBe('1 threads could not be read')
+    expect((await meta()).error).toBe('1 thread could not be read')
     expect((await threadDoc('th-1')).lastCheckedAt).toBeNull()
 
     await poll(T0 + 3 * HOUR)
     expect((await meta()).error).toBeNull()
+
+    const allFail: GmailClient = { ...gmail, getThread: async () => { throw Object.assign(new Error('boom ada@example.com'), { code: 14 }) } }
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await poll(T0 + 4 * HOUR, allFail)
+    expect(quiet.mock.calls.map(c => c[0])).toEqual([
+      'Mail poll: thread th-1 could not be read (code 14)', 'Mail poll: thread th-2 could not be read (code 14)',
+    ])
+    quiet.mockRestore()
+    expect((await meta()).error).toBe('2 threads could not be read')
   })
 
   it('attachment only for stored ids', async () => {

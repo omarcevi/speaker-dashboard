@@ -108,5 +108,7 @@ export interface ThreadDoc {
 export interface ReceivedMessage {
   kind: 'reply' | 'bounce' | 'team'; from: string; to: string[]; cc: string[]; at: Ts; subject: string; text: string; quoted: string;
   attachments: { id: string; name: string; size: number; mimeType: string }[];
+  /** Set when text, quoted, subject, to/cc or attachments were cut to fit the stored limits. */
+  truncated?: boolean;
 }
 export interface MailMeta { lastPollAt: Ts | null; lastSendAt: Ts | null; error: string | null } // meta/mail
