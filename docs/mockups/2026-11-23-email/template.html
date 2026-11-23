@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { esc, I, mailShell, RULES, templates, speakers, eligible, values, render, problems, known, SPEAKER_FILLS, event, speakerName, emailOf } = MAIL;
+const p = new URLSearchParams(location.search);
+const t = p.get('new') ? { id: 'new', name: '', rule: 'approved', subject: '', body: '', attachments: [], edited: null } : structuredClone(templates.find((x) => x.id === p.get('t')) ?? templates[2]);
+const sample = () => speakers.filter((g) => eligible(t, g).ok || eligible(t, g).already);
+let who = sample()[0]?.key ?? speakers[0].key;
+
+mailShell(`
+  <div class="stepper"><a class="crumb" href="templates.html">${I.left}Templates</a></div>
+  <div class="title-row" style="margin-top:12px">
+    <div><h1>${t.name ? esc(t.name) : 'New template'}</h1>${t.edited ? `<p class="lede">Last edited by ${esc(t.edited[0])} · ${esc(t.edited[1])}</p>` : ''}</div>
+    <div class="actions"><button class="btn">Discard changes</button><button class="btn">Save</button><a class="btn primary" href="send.html?t=${t.id}">Save and send…</a></div>
+  </div>
+  <div class="editor">
+    <section class="card pad" aria-label="Template">
+      <div class="field"><label for="name">Name</label><input class="input" id="name" value="${esc(t.name)}" placeholder="e.g. Event info"></div>
+      <div class="field"><label for="rule">Who gets it</label>
+        <span class="select" style="display:flex"><select id="rule" style="width:100%">${Object.entries(RULES).map(([k, [l]]) => `<option value="${k}"${k === t.rule ? ' selected' : ''}>${l}</option>`).join('')}</select></span>
+        <span class="hint" id="rule-hint"></span></div>
+      <div class="field"><label for="subject">Subject</label><input class="input" id="subject" value="${esc(t.subject)}"></div>
+      <div class="field"><label for="body">Message</label><textarea class="area" id="body">${esc(t.body)}</textarea>
+        <div id="warns"></div></div>
+      <div class="field"><span class="label">Insert a fill-in at the cursor</span>
+        <div class="chip-group"><span class="hint">Speaker</span><div class="chips">${SPEAKER_FILLS.map((k) => `<button class="chip" data-fill="${k}">${k}</button>`).join('')}</div></div>
+        <div class="chip-group"><span class="hint">Event · <a href="event.html">edit values</a></span><div class="chips">${event.map((f) => `<button class="chip" data-fill="${f.key}" title="${esc(f.value || 'Empty')}">${f.key}</button>`).join('')}</div></div></div>
+      <div class="field"><span class="label">Attachments</span>
+        <div class="chips" id="atts"></div>
+        <div class="drop" style="padding:16px;margin-top:4px"><b>Drop a file</b> or <button class="link-btn">browse</button> · up to 20 MB in total</div></div>
+    </section>
+    <section class="card pad" aria-label="Preview" style="position:sticky;top:16px">
+      <div class="preview-head"><h2>Preview</h2>
+        <span class="select"><label class="vh" for="who">Preview for</label><select id="who"></select></span></div>
+      <div id="preview"></div>
+      <p class="hint" style="margin-top:12px">Grey marks are filled in for this speaker. A dashed box means a fill-in is unknown or empty, and the email won't send until it's fixed.</p>
+    </section>
+  </div>`);
+
+const $ = (id) => document.getElementById(id);
+function update() {
+  t.name = $('name').value; t.rule = $('rule').value; t.subject = $('subject').value; t.body = $('body').value;
+  $('rule-hint').textContent = RULES[t.rule][1];
+  const list = sample();
+  if (!list.some((g) => g.key === who)) who = list[0]?.key ?? speakers[0].key;
+  $('who').innerHTML = (list.length ? list : speakers).map((g) => `<option value="${g.key}"${g.key === who ? ' selected' : ''}>${esc(speakerName(g.sp))}</option>`).join('');
+  const g = speakers.find((x) => x.key === who);
+  const el = eligible(t, g);
+  const v = values(g, el.talks ?? g.talks);
+  const pr = problems(t, v);
+  $('warns').innerHTML = pr.unknown.map((n) => `<div class="warn-line" style="margin-top:6px">{{${esc(n)}}} isn't a known fill-in.</div>`).join('')
+    + pr.empty.filter((n) => event.some((f) => f.key === n)).map((n) => `<div class="warn-line" style="margin-top:6px">Event setting {{${esc(n)}}} is empty. <a href="event.html">Fill it in</a></div>`).join('');
+  const cc = (el.talks ?? []).map((x) => x.coSpeaker?.email).filter(Boolean);
+  $('preview').innerHTML = `<div class="mail"><dl class="mail-h">
+      <dt>From</dt><dd>DevFest Istanbul &lt;speakers@example.org&gt;</dd>
+      <dt>To</dt><dd>${esc(speakerName(g.sp))} &lt;${esc(emailOf(g.sp))}&gt;</dd>
+      ${cc.length ? `<dt>Cc</dt><dd>${cc.map(esc).join(', ')}</dd>` : ''}
+      <dt>Subject</dt><dd class="subj">${render(t.subject, v) || '<span class="muted">No subject</span>'}</dd></dl>
+    <div class="mail-b">${render(t.body, v) || '<span class="muted">Start writing on the left.</span>'}</div>
+    ${t.attachments.length ? `<div class="mail-att">${t.attachments.map((a) => `<span class="att">${esc(a.name)} <span class="muted">${esc(a.size)}</span></span>`).join('')}</div>` : ''}</div>`;
+  $('atts').innerHTML = t.attachments.length ? t.attachments.map((a, i) => `<span class="att">${esc(a.name)} <span class="muted">${esc(a.size)}</span><button class="link-btn" data-rm="${i}" aria-label="Remove ${esc(a.name)}">Remove</button></span>`).join('') : '<span class="hint">None</span>';
+}
+document.addEventListener('input', update);
+document.addEventListener('change', (e) => { if (e.target.id === 'who') { who = e.target.value; update(); } });
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('[data-fill]');
+  if (c) {
+    const ta = $('body'); const s = ta.selectionStart, en = ta.selectionEnd, ins = `{{${c.dataset.fill}}}`;
+    ta.value = ta.value.slice(0, s) + ins + ta.value.slice(en); ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length; update();
+  }
+  const r = e.target.closest('[data-rm]');
+  if (r) { t.attachments.splice(Number(r.dataset.rm), 1); update(); }
+});
+update();
+</script>
+</body>
+</html>
