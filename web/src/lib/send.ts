@@ -1,4 +1,4 @@
-import { renderEmail } from '../../../functions/src/email/fillIns.ts'
+import { isFillInName, renderEmail } from '../../../functions/src/email/fillIns.ts'
 import {
   decision, eligibility, fillInValues, inFlightConflict, needsFollowUp, type Eligibility, type SpeakerGroup,
 } from '../../../functions/src/email/recipients.ts'
@@ -113,7 +113,7 @@ export function blockedReason(p: Prepared): string {
   if (p.refused !== null) return p.refused
   const parts = [
     ...p.empty.map((n) => `{{${n}}} is empty`),
-    ...p.missing.map((n) => `{{${n}}} isn't a known fill-in`),
+    ...p.missing.map((n) => (isFillInName(n) ? `{{${n}}} isn't a known fill-in` : `${n} isn't a valid fill-in`)),
   ]
   return parts.join(', ')
 }

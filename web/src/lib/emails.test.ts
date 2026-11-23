@@ -212,6 +212,12 @@ describe('previewSegments', () => {
       { kind: 'bad', text: '{{nope}}', why: 'unknown' }, { kind: 'text', text: '!' },
     ])
   })
+  it('marks malformed fill-ins', () => {
+    expect(previewSegments('Hi {{first name}} {{firstName}', { firstName: 'Ada' })).toEqual([
+      { kind: 'text', text: 'Hi ' }, { kind: 'bad', text: '{{first name}}', why: 'malformed' }, { kind: 'text', text: ' ' },
+      { kind: 'bad', text: '{{firstName}', why: 'malformed' },
+    ])
+  })
 })
 
 describe('emptyEventFillIns and unknownFillIns', () => {
@@ -220,6 +226,9 @@ describe('emptyEventFillIns and unknownFillIns', () => {
     const t = { subject: '{{eventName}}', body: 'Hi {{firstName}}, at {{venue}} {{wifi}}' }
     expect(emptyEventFillIns(t, fields)).toEqual(['venue'])
     expect(unknownFillIns(t, fields)).toEqual(['wifi'])
+  })
+  it('lists malformed fill-ins as unknown, as written', () => {
+    expect(unknownFillIns({ subject: '{{ }}', body: 'Hi {{first name}}' }, fields)).toEqual(['{{ }}', '{{first name}}'])
   })
 })
 

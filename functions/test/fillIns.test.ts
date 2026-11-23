@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { fillInsIn, renderEmail, SPEAKER_FILL_INS, validEventKey } from '../src/email/fillIns.js'
+import { fillInLabel, fillInParts, fillInsIn, renderEmail, SPEAKER_FILL_INS, validEventKey } from '../src/email/fillIns.js'
 
 describe('fillInsIn', () => {
   it('lists names in order, de-duplicated, allowing spaces', () => {
     expect(fillInsIn('{{ b }} x {{a}} {{b}} {c}')).toEqual(['b', 'a'])
+  })
+  it('lists malformed fill-ins as their raw text', () => {
+    expect(fillInsIn('Hi {{first name}}, {{ }} {{firstName} {lastName}} {{a-b}} }} {{')).toEqual([
+      '{{first name}}', '{{ }}', '{{firstName}', '{lastName}}', '{{a-b}}', '}}', '{{',
+    ])
+  })
+  it('labels names as tokens and keeps malformed text as is', () => {
+    expect(fillInLabel('venue')).toBe('{{venue}}')
+    expect(fillInLabel('{{first name}}')).toBe('{{first name}}')
+  })
+  it('splits text into text, fill and malformed parts', () => {
+    expect(fillInParts('Hi {{ a }}, {{b c}}!')).toEqual([
+      { kind: 'text', text: 'Hi ' }, { kind: 'fill', text: '{{ a }}', name: 'a' }, { kind: 'text', text: ', ' },
+      { kind: 'malformed', text: '{{b c}}' }, { kind: 'text', text: '!' },
+    ])
   })
 })
 
@@ -22,6 +37,15 @@ describe('renderEmail', () => {
   it('fills names with spaces; single braces stay text', () => {
     const r = renderEmail({ subject: '{{ firstName }}', body: '{firstName}' }, { firstName: 'Ada' })
     expect(r).toMatchObject({ ok: true, subject: 'Ada', text: '{firstName}' })
+  })
+  it('blocks malformed fill-ins instead of sending them literally', () => {
+    expect(renderEmail({ subject: 'Hi {{first name}}', body: '{{firstName}' }, { firstName: 'Ada' }))
+      .toEqual({ ok: false, missing: ['{{first name}}', '{{firstName}'], empty: [] })
+    expect(renderEmail({ subject: 's', body: 'x {{ }} y' }, {})).toEqual({ ok: false, missing: ['{{ }}'], empty: [] })
+    expect(renderEmail({ subject: 's', body: 'x }} y' }, {})).toEqual({ ok: false, missing: ['}}'], empty: [] })
+  })
+  it('does not trip on braces inside filled values', () => {
+    expect(renderEmail({ subject: 's', body: '{{t}}' }, { t: 'a {{b}} c}}' })).toMatchObject({ ok: true, text: 'a {{b}} c}}' })
   })
   it('builds html with paragraphs, br, links and escaping', () => {
     const r = renderEmail({ subject: 's', body: 'One\nTwo\n\nSee https://x.test/a?b=1&c. Bye {{n}}' }, { n: '<script>x</script>' })
@@ -45,5 +69,13 @@ describe('validEventKey', () => {
     expect(validEventKey('1x', [])).toEqual(expect.any(String))
     expect(validEventKey('a b', [])).toEqual(expect.any(String))
     expect(validEventKey('venue', [])).toBeNull()
+  })
+})
+
+describe('renderProblem', () => {
+  it('names unknown and malformed fill-ins apart', async () => {
+    const { renderProblem } = await import('../src/email/compose.js')
+    expect(renderProblem(['venu', '{{first name}}'], ['deadline']))
+      .toBe('Unknown fill-in: venu; Malformed fill-in: {{first name}}; Empty fill-in: deadline')
   })
 })

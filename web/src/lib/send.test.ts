@@ -141,6 +141,12 @@ describe('prepare', () => {
     expect(blockedReason(p)).toBe("{{deadline}} is empty, {{nope}} isn't a known fill-in")
   })
 
+  it('blocks a recipient on a malformed fill-in', () => {
+    const p = prepare('acceptance', { subject: 'Hi {{first name}}', body: 'x' }, ada, judge(), fields, { templateId: 'acc', followUp: false })
+    expect(canSend(p)).toBe(false)
+    expect(blockedReason(p)).toBe("{{first name}} isn't a valid fill-in")
+  })
+
   it('blocks a recipient the rule refuses', () => {
     const p = prepare('acceptance', { subject: 'Hi', body: 'x' }, bo, judge(), fields, { templateId: 'acc', followUp: false })
     expect(blockedReason(p)).toBe('No approved talk')

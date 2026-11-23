@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { renderEmail, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
+import { fillInLabel, isFillInName, renderEmail, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
 import { fillInValues, type SpeakerGroup } from '../../../functions/src/email/recipients.ts'
 import type { EmailTemplate, EventField, RecipientRule, TemplateAttachment } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
@@ -81,11 +81,11 @@ function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fiel
       </div>
       {!rendered.ok && g && (
         <p className="warn-line" style={{ marginTop: 12 }}>
-          <span>Won't send to {name} yet: {[...rendered.missing, ...rendered.empty].map((n) => `{{${n}}}`).join(', ')}</span>
+          <span>Won't send to {name} yet: {[...rendered.missing, ...rendered.empty].map(fillInLabel).join(', ')}</span>
         </p>
       )}
       <p className="hint" style={{ marginTop: 12 }}>
-        Grey marks are filled in for this speaker. A dashed box means a fill-in is unknown or empty, and the email won't send until it's fixed.
+        Grey marks are filled in for this speaker. A dashed box means a fill-in is unknown, malformed or empty, and the email won't send until it's fixed.
       </p>
     </section>
   )
@@ -223,7 +223,11 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
             <textarea ref={bodyEl} className="area" id="body" value={draft.body} readOnly={!admin}
               onFocus={() => { lastField.current = 'body' }} onChange={(e) => set({ body: e.target.value })} />
             <div>
-              {unknown.map((n) => <div key={`u-${n}`} className="warn-line" style={{ marginTop: 6 }}><span>{`{{${n}}}`} isn't a known fill-in.</span></div>)}
+              {unknown.map((n) => (
+                <div key={`u-${n}`} className="warn-line" style={{ marginTop: 6 }}>
+                  <span>{isFillInName(n) ? `{{${n}}} isn't a known fill-in.` : `${n} isn't a valid fill-in. Use letters and digits in double braces, like {{firstName}}.`}</span>
+                </div>
+              ))}
               {empty.map((n) => (
                 <div key={`e-${n}`} className="warn-line" style={{ marginTop: 6 }}>
                   <span>Event setting {`{{${n}}}`} is empty. <Link to="/emails/event">Fill it in</Link></span>

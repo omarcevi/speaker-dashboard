@@ -2,7 +2,7 @@
 // when an email is enqueued for "Send now" and again when a scheduled email comes due. Server-only.
 import type { Firestore } from 'firebase-admin/firestore'
 import type { EmailDoc, RecipientRule } from '../model.js'
-import { renderEmail } from './fillIns.js'
+import { isFillInName, renderEmail } from './fillIns.js'
 import type { LoadedSpeakers } from './loadSpeakers.js'
 import { eligibility, fillInValues, type SpeakerGroup } from './recipients.js'
 
@@ -18,7 +18,10 @@ const list = (names: string[]) => names.join(', ')
 /** Why a render failed, in words for the admin: "Empty fill-in: venue". */
 export function renderProblem(missing: string[], empty: string[]): string {
   const parts: string[] = []
-  if (missing.length) parts.push(`Unknown fill-in${missing.length > 1 ? 's' : ''}: ${list(missing)}`)
+  const unknown = missing.filter(isFillInName)
+  const malformed = missing.filter((n) => !isFillInName(n))
+  if (unknown.length) parts.push(`Unknown fill-in${unknown.length > 1 ? 's' : ''}: ${list(unknown)}`)
+  if (malformed.length) parts.push(`Malformed fill-in${malformed.length > 1 ? 's' : ''}: ${list(malformed)}`)
   if (empty.length) parts.push(`Empty fill-in${empty.length > 1 ? 's' : ''}: ${list(empty)}`)
   return parts.join('; ')
 }

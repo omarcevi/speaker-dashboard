@@ -7,7 +7,7 @@ export default function Marked({ text, values }: { text: string; values: Record<
       {previewSegments(text, values).map((s, i) =>
         s.kind === 'text' ? <span key={i}>{s.text}</span>
           : s.kind === 'fill' ? <span key={i} className="fill">{s.text}</span>
-            : <span key={i} className="fill bad" title={s.why === 'unknown' ? 'Unknown fill-in' : 'Empty for this speaker'}>{s.text}</span>)}
+            : <span key={i} className="fill bad" title={s.why === 'unknown' ? 'Unknown fill-in' : s.why === 'malformed' ? 'Malformed fill-in' : 'Empty for this speaker'}>{s.text}</span>)}
     </>
   )
 }

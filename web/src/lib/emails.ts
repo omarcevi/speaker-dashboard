@@ -1,4 +1,4 @@
-import { fillInsIn, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
+import { fillInParts, fillInsIn, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
 import type { EmailDoc, EventField, RecipientRule, ThreadDoc } from '../../../functions/src/model.ts'
 import { formatWhen } from './syncStatus.ts'
 
@@ -200,22 +200,17 @@ export function ago(ms: number, now: number): string {
   return formatWhen(ms)
 }
 
-export type Segment = { kind: 'text'; text: string } | { kind: 'fill'; text: string } | { kind: 'bad'; text: string; why: 'unknown' | 'empty' }
+export type Segment = { kind: 'text'; text: string } | { kind: 'fill'; text: string } | { kind: 'bad'; text: string; why: 'unknown' | 'empty' | 'malformed' }
 
 /** Text with each {{fill-in}} replaced by its value and marked, for the template preview. */
 export function previewSegments(text: string, values: Record<string, string>): Segment[] {
-  const out: Segment[] = []
-  let last = 0
-  for (const m of text.matchAll(/\{\{\s*([^{}\s]+)\s*\}\}/g)) {
-    if (m.index > last) out.push({ kind: 'text', text: text.slice(last, m.index) })
-    const name = m[1]
-    if (!Object.prototype.hasOwnProperty.call(values, name)) out.push({ kind: 'bad', text: m[0], why: 'unknown' })
-    else if (values[name].trim() === '') out.push({ kind: 'bad', text: m[0], why: 'empty' })
-    else out.push({ kind: 'fill', text: values[name] })
-    last = m.index + m[0].length
-  }
-  if (last < text.length) out.push({ kind: 'text', text: text.slice(last) })
-  return out
+  return fillInParts(text).map((p): Segment => {
+    if (p.kind === 'text') return p
+    if (p.kind === 'malformed') return { kind: 'bad', text: p.text, why: 'malformed' }
+    if (!Object.prototype.hasOwnProperty.call(values, p.name)) return { kind: 'bad', text: p.text, why: 'unknown' }
+    if (values[p.name].trim() === '') return { kind: 'bad', text: p.text, why: 'empty' }
+    return { kind: 'fill', text: values[p.name] }
+  })
 }
 
 /** Each recipient rule's name and what it means, in the order templates are listed. */
@@ -233,7 +228,7 @@ export function emptyEventFillIns(t: { subject: string; body: string }, fields: 
   return fillInsIn(`${t.subject}\n${t.body}`).filter((n) => empty.has(n))
 }
 
-/** Fill-ins a template uses that are neither speaker fill-ins nor event settings. */
+/** Fill-ins a template uses that are neither speaker fill-ins nor event settings; malformed ones as written. */
 export function unknownFillIns(t: { subject: string; body: string }, fields: EventField[]): string[] {
   const known = new Set<string>([...SPEAKER_FILL_INS, ...fields.map((f) => f.key)])
   return fillInsIn(`${t.subject}\n${t.body}`).filter((n) => !known.has(n))
