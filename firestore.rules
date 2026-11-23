@@ -48,6 +48,54 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Event settings. Rules OR together: the wildcard above stays false for every
+    // other meta doc; this adds an admin write for meta/event only.
+    match /meta/event {
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['fields', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && request.resource.data.fields is list
+        && request.resource.data.fields.size() <= 50
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedByName == me().name
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /templates/{id} {
+      allow read: if isMember();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'subject', 'body', 'attachments', 'rule', 'stageId', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() >= 1
+        && request.resource.data.body is string
+        && request.resource.data.body.size() <= 50000
+        && request.resource.data.attachments is list
+        && request.resource.data.attachments.size() <= 10
+        && request.resource.data.rule in ['acceptance', 'decline', 'approved', 'anyone']
+        && (request.resource.data.stageId == null || request.resource.data.stageId is string)
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedByName == me().name
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Sent and received mail: written by functions only.
+    match /emails/{id} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    match /threads/{id} {
+      allow read: if isMember();
+      allow write: if false;
+
+      match /messages/{m} {
+        allow read: if isMember();
+        allow write: if false;
+      }
+    }
+
     // AI overviews and neighbours: written by functions only.
     match /ai/{id} {
       allow read: if isMember();

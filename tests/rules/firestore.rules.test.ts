@@ -40,6 +40,11 @@ beforeEach(async () => {
     await setDoc(doc(db, 'submissions/row-2'), { title: 'T' });
     await setDoc(doc(db, 'meta/sync'), { at: 1 });
     await setDoc(doc(db, 'meta/advocu'), { total: 1 });
+    await setDoc(doc(db, 'meta/event'), { fields: [] });
+    await setDoc(doc(db, 'templates/t1'), { name: 'Welcome', subject: 'Hi', body: 'Hello', attachments: [], rule: 'anyone', stageId: null });
+    await setDoc(doc(db, 'emails/e1'), { subject: 'Hi' });
+    await setDoc(doc(db, 'threads/th1'), { subject: 'Hi' });
+    await setDoc(doc(db, 'threads/th1/messages/m1'), { text: 'Hi' });
     await setDoc(doc(db, 'ai/row-2'), { sourceHash: 'h', overview: null, neighbors: [], error: null });
     await setDoc(doc(db, 'aiVectors/row-2'), { vector: [0.1, 0.2], sourceHash: 'h' });
     await setDoc(doc(db, 'scores/row-2__adm1'), {
@@ -294,4 +299,143 @@ describe('ai results', () => {
       await assertFails(deleteDoc(doc(as(uid), 'aiVectors/row-2')));
     });
   }
+});
+
+describe('templates', () => {
+  const tpl = (extra: object = {}) => ({
+    name: 'Accepted', subject: 'Welcome', body: 'Hello there', attachments: [], rule: 'anyone', stageId: null,
+    updatedAt: serverTimestamp(), updatedBy: 'adm1', updatedByName: 'Adele', ...extra,
+  });
+  const readers: [string, boolean][] = [['mem1', true], ['adm1', true], ['wait1', false], ['rem1', false]];
+  for (const [uid, ok] of readers) {
+    it(`${uid} ${ok ? 'can' : 'cannot'} read templates/t1`, async () => {
+      const p = getDoc(doc(as(uid), 'templates/t1'));
+      await (ok ? assertSucceeds(p) : assertFails(p));
+    });
+  }
+  it('signed out cannot read templates/t1', async () => {
+    await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'templates/t1')));
+  });
+  it('admin can create a template', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t2'), tpl()));
+  });
+  it('admin can set a string stageId and up to 10 attachments', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ stageId: 's1', attachments: Array.from({ length: 10 }, (_, i) => ({ name: `f${i}` })) })));
+  });
+  it('admin can delete a template', async () => {
+    await assertSucceeds(deleteDoc(doc(as('adm1'), 'templates/t1')));
+  });
+  it('member cannot write a template', async () => {
+    await assertFails(setDoc(doc(as('mem1'), 'templates/t2'), tpl({ updatedBy: 'mem1', updatedByName: 'Mo' })));
+  });
+  it('member cannot delete a template', async () => {
+    await assertFails(deleteDoc(doc(as('mem1'), 'templates/t1')));
+  });
+  for (const uid of ['wait1', 'rem1']) {
+    it(`${uid} cannot write a template`, async () => {
+      await assertFails(setDoc(doc(as(uid), 'templates/t2'), tpl({ updatedBy: uid, updatedByName: NAMES[uid] })));
+    });
+  }
+  it('signed out cannot write a template', async () => {
+    await assertFails(setDoc(doc(testEnv.unauthenticatedContext().firestore(), 'templates/t2'), tpl()));
+  });
+  it('admin cannot set updatedByName to someone else', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ updatedByName: 'Mo' })));
+  });
+  it('admin cannot set updatedBy to someone else', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ updatedBy: 'mem1' })));
+  });
+  it('admin cannot use a client updatedAt', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ updatedAt: new Date() })));
+  });
+  it('admin cannot add an extra key', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ extra: 1 })));
+  });
+  it('admin cannot use an unknown rule', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ rule: 'bogus' })));
+  });
+  it('admin cannot set an empty name or subject', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ name: '' })));
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ subject: '' })));
+  });
+  it('admin cannot set a body over 50,000 chars', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ body: 'x'.repeat(50001) })));
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t3'), tpl({ body: 'x'.repeat(50000) })));
+  });
+  it('admin cannot set a numeric stageId', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ stageId: 3 })));
+  });
+  it('admin cannot set more than 10 attachments or a non-list', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ attachments: Array.from({ length: 11 }, (_, i) => ({ name: `f${i}` })) })));
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ attachments: 'x' })));
+  });
+});
+
+describe('meta/event', () => {
+  const ev = (extra: object = {}) => ({
+    fields: [{ key: 'venue' }], updatedAt: serverTimestamp(), updatedBy: 'adm1', updatedByName: 'Adele', ...extra,
+  });
+  it('member can read meta/event', async () => {
+    await assertSucceeds(getDoc(doc(as('mem1'), 'meta/event')));
+  });
+  it('waiting and removed users cannot read meta/event', async () => {
+    await assertFails(getDoc(doc(as('wait1'), 'meta/event')));
+    await assertFails(getDoc(doc(as('rem1'), 'meta/event')));
+  });
+  it('signed out cannot read or write meta/event', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'meta/event')));
+    await assertFails(setDoc(doc(db, 'meta/event'), ev()));
+  });
+  it('admin can write meta/event', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/event'), ev()));
+  });
+  it('member, waiting and removed users cannot write meta/event', async () => {
+    for (const uid of ['mem1', 'wait1', 'rem1']) {
+      await assertFails(setDoc(doc(as(uid), 'meta/event'), ev({ updatedBy: uid, updatedByName: NAMES[uid] })));
+    }
+  });
+  it('admin cannot set another updatedByName', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ updatedByName: 'Mo' })));
+  });
+  it('admin cannot add an extra key', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ extra: 1 })));
+  });
+  it('admin cannot write more than 50 fields or a non-list', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ fields: Array.from({ length: 51 }, (_, i) => ({ key: `k${i}` })) })));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ fields: 'x' })));
+  });
+  it('admin still cannot write meta/sync or meta/other', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/sync'), { at: 2 }));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/other'), ev()));
+  });
+});
+
+describe('emails and threads', () => {
+  const paths = ['emails/e1', 'threads/th1', 'threads/th1/messages/m1'];
+  for (const p of paths) {
+    it(`member and admin can read ${p}`, async () => {
+      await assertSucceeds(getDoc(doc(as('mem1'), p)));
+      await assertSucceeds(getDoc(doc(as('adm1'), p)));
+    });
+    it(`waiting, removed and signed-out cannot read ${p}`, async () => {
+      await assertFails(getDoc(doc(as('wait1'), p)));
+      await assertFails(getDoc(doc(as('rem1'), p)));
+      await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), p)));
+    });
+    it(`nobody can write or delete ${p}`, async () => {
+      for (const uid of ['mem1', 'adm1', 'wait1', 'rem1']) {
+        await assertFails(setDoc(doc(as(uid), p), { x: 1 }));
+        await assertFails(deleteDoc(doc(as(uid), p)));
+      }
+      await assertFails(setDoc(doc(testEnv.unauthenticatedContext().firestore(), p), { x: 1 }));
+    });
+  }
+  it('nobody can create a new email', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'emails/new'), { subject: 'x' }));
+  });
+  it('members can list emails and threads', async () => {
+    await assertSucceeds(getDocs(collection(as('mem1'), 'emails')));
+    await assertSucceeds(getDocs(collection(as('mem1'), 'threads')));
+  });
 });
