@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Status } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
-import { blockedReason, canSend, istanbulDate, onItsWay, prepare, recipientRows, type Judge } from './send.ts'
+import { blockedReason, canSend, istanbulDate, nameList, prepare, recipientRows, visibleSelection, type Judge } from './send.ts'
 import { fakeSub } from './testing.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
@@ -77,12 +77,35 @@ describe('recipientRows', () => {
   })
 })
 
-describe('onItsWay', () => {
-  it('counts in-flight emails of the template, and any decision email for decision templates', () => {
-    expect(onItsWay([email({ state: 'queued', templateId: 'dec', rule: 'decline' })], 'acc', 'acceptance')).toBe(true)
-    expect(onItsWay([email({ state: 'queued', templateId: 'dec', rule: 'decline' })], 'info', 'approved')).toBe(false)
-    expect(onItsWay([email({ state: 'unknown', templateId: 'info', rule: 'approved' })], 'info', 'approved')).toBe(true)
-    expect(onItsWay([email({ state: 'failed', templateId: 'info', rule: 'approved' })], 'info', 'approved')).toBe(false)
+describe('visibleSelection', () => {
+  const rows = recipientRows('acceptance', 'acc', groups, judge())
+  it('takes ticked ready rows the filters show', () => {
+    expect(visibleSelection(rows, new Set(), { decision: 'all', hideAlready: false })).toEqual({ selected: ['ada@example.com', 'dee@example.com'], hidden: 0 })
+    expect(visibleSelection(rows, new Set(['dee@example.com']), { decision: 'all', hideAlready: false })).toEqual({ selected: ['ada@example.com'], hidden: 0 })
+  })
+  it('counts ticked rows a filter hides and leaves them out', () => {
+    expect(visibleSelection(rows, new Set(), { decision: 'declined', hideAlready: false })).toEqual({ selected: [], hidden: 2 })
+    expect(visibleSelection(rows, new Set(['ada@example.com']), { decision: 'not-ready', hideAlready: true })).toEqual({ selected: [], hidden: 1 })
+  })
+})
+
+describe('nameList', () => {
+  it('lists up to five names, then the rest as a count', () => {
+    expect(nameList(['Ada', 'Bo'])).toBe('Ada, Bo')
+    expect(nameList(['A', 'B', 'C', 'D', 'E', 'F', 'G'])).toBe('A, B, C, D, E +2 more')
+  })
+})
+
+describe('in-flight emails', () => {
+  it('marks a decision template on its way when any decision email is still going out', () => {
+    const history = [email({ speakerKey: 'ada@example.com', state: 'queued', templateId: 'dec', rule: 'decline' })]
+    const ada = recipientRows('acceptance', 'acc', groups, judge(history)).find((r) => r.g.speakerKey === 'ada@example.com')!
+    expect(ada.reason).toBe('Already on its way')
+  })
+  it('ignores failed emails', () => {
+    const history = [email({ speakerKey: 'ada@example.com', state: 'failed' })]
+    const ada = recipientRows('acceptance', 'acc', groups, judge(history)).find((r) => r.g.speakerKey === 'ada@example.com')!
+    expect(ada.tab).toBe('ready')
   })
 })
 

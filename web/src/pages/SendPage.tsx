@@ -13,16 +13,15 @@ import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
 import {
-  blockedReason, canSend, isDecisionRule, istanbulDate, plural, prepare, recipientRows, speakerName,
-  type Judge, type Prepared, type RecipientRow, type Tab,
+  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, visibleSelection,
+  type DecisionFilter, type Judge, type Prepared, type RecipientRow, type Tab,
 } from '../lib/send.ts'
 
 type Template = EmailTemplate & { id: string }
 type Mode = 'batch' | 'custom' | 'followUp'
-type Decision = 'all' | 'approved' | 'declined' | 'not-ready'
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
-const DECISIONS: [Decision, string][] = [['all', 'All'], ['approved', 'Approved'], ['declined', 'Declined'], ['not-ready', 'Not ready']]
+const DECISIONS: [DecisionFilter, string][] = [['all', 'All'], ['approved', 'Approved'], ['declined', 'Declined'], ['not-ready', 'Not ready']]
 const CUSTOM_BODY = 'Hi {{firstName}},\n\n'
 const DAY = 24 * 3600_000
 /** Read in event handlers only. */
@@ -98,7 +97,8 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
     const s = state[speakerKey]
     return typeof s === 'object' ? <p className="inline-error" role="alert" style={{ marginBottom: 12 }}>Test not sent: {s.error}</p> : null
   }
-  return { button, error }
+  const reset = () => setState({})
+  return { button, error, reset }
 }
 
 function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template | null; speakerKey: string | null }) {
@@ -115,7 +115,7 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
   const [batchId] = useState(() => crypto.randomUUID())
   const [step, setStep] = useState(mode === 'batch' ? 1 : 2)
   const [tab, setTab] = useState<Tab>('ready')
-  const [decisionFilter, setDecisionFilter] = useState<Decision>('all')
+  const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all')
   const [hideAlready, setHideAlready] = useState(false)
   const [unticked, setUnticked] = useState<Set<string>>(() => new Set())
   const [picked, setPicked] = useState<string[]>(speakerKey ? [speakerKey] : [])
@@ -143,9 +143,10 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
   // Step 1: every speaker sorted into tabs.
   const rows = useMemo(() => (mode === 'batch' ? recipientRows(rule, templateId, sp.groups, judge) : []), [mode, rule, templateId, sp.groups, judge])
   const ready = rows.filter((r) => r.tab === 'ready')
-  const selected = ready.filter((r) => !unticked.has(r.g.speakerKey)).map((r) => r.g.speakerKey)
-  const shown = (t: Tab) => rows.filter((r) => r.tab === t
-    && (decisionFilter === 'all' || r.decision === decisionFilter) && !(hideAlready && r.already))
+  const rowFilter = { decision: decisionFilter, hideAlready }
+  // Only ticked rows the filters show are sent or marked; ticked rows a filter hides are counted, not acted on.
+  const { selected, hidden } = visibleSelection(rows, unticked, rowFilter)
+  const shown = (t: Tab) => rows.filter((r) => r.tab === t && passes(r, rowFilter))
   const firstSend = decisionTmpl && !emails.some((e) => e.templateId === templateId && e.state === 'sent' && !e.manual)
 
   // Step 2 on: the recipients picked, as their emails would be written now.
@@ -153,7 +154,8 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
     .map((g) => prepare(rule, source, g, judge, fields, { templateId, followUp }))
   const sendable = prepared.filter(canSend)
   const blocked = prepared.filter((p) => !canSend(p))
-  const current = prepared[Math.min(at, prepared.length - 1)]
+  const shownAt = Math.max(0, Math.min(at, prepared.length - 1))
+  const current = prepared[shownAt]
   const anyCc = prepared.some((p) => p.cc.length > 0)
 
   const sendAt = when === 'now' ? null : date && time ? toIstanbulMs(date, time) : NaN
@@ -243,9 +245,10 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
               and mark them, so they don't get it twice.{markNote && <> {markNote}</>}
             </span>
             {marking === 'confirm' ? (
-              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flex: 'none' }}>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', maxWidth: 420 }}>
+                <span>Mark {nameList(selected.map(nameOf))} as already emailed?</span>
                 <button className="btn sm text" onClick={() => setMarking('idle')}>Cancel</button>
-                <button className="btn sm" onClick={() => void mark()}>Mark {plural(selected.length, 'speaker')}</button>
+                <button className="btn sm" onClick={() => void mark()}>Mark</button>
               </span>
             ) : (
               <button className="btn sm" style={{ marginLeft: 'auto', flex: 'none' }} disabled={marking === 'busy' || selected.length === 0}
@@ -329,7 +332,7 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
           )}
         </div>
         <div className="actionbar">
-          <span><b className="num">{selected.length}</b> of {ready.length} selected</span><span className="grow" />
+          <span><b className="num">{selected.length}</b> of {ready.length} selected{hidden > 0 && ` · ${hidden} hidden by filter`}</span><span className="grow" />
           <Link className="btn text" to="/emails/templates">Cancel</Link>
           <button className="btn primary" disabled={selected.length === 0} onClick={goPreview}>Preview {plural(selected.length, 'email')}</button>
         </div>
@@ -364,11 +367,11 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
               </div>
               <div className="field">
                 <label htmlFor="subject">Subject</label>
-                <input className="input" id="subject" value={draft.subject} placeholder="Subject" onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))} />
+                <input className="input" id="subject" value={draft.subject} placeholder="Subject" onChange={(e) => { test.reset(); setDraft((d) => ({ ...d, subject: e.target.value })) }} />
               </div>
               <div className="field">
                 <label htmlFor="body">Message</label>
-                <textarea className="area" id="body" value={draft.body} onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))} />
+                <textarea className="area" id="body" value={draft.body} onChange={(e) => { test.reset(); setDraft((d) => ({ ...d, body: e.target.value })) }} />
                 <span className="hint">Fill-ins work here too. This email isn't saved as a template.</span>
               </div>
             </section>
@@ -426,7 +429,7 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
             <span>
               <b>{plural(blocked.length, 'email')} can't send yet.</b>{' '}
               {blocked.map((p) => `${p.g.name.first || speakerName(p.g)}: ${blockedReason(p)}`).join(' · ')}.{' '}
-              <Link to="/emails/event">Fix in Event settings</Link>{followUp ? '.' : ' or untick them.'}
+              <a href="/emails/event" target="_blank" rel="noopener">Fix in Event settings</a>{followUp ? '.' : ' or untick them.'}
             </span>
           </div>
         )}
@@ -435,7 +438,7 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
             <div className="card-head"><h2>{plural(prepared.length, 'email')}</h2></div>
             <ul className="who-list">
               {prepared.map((p, i) => (
-                <li key={p.g.speakerKey} aria-current={i === at} tabIndex={0} onClick={() => setAt(i)}
+                <li key={p.g.speakerKey} aria-current={i === shownAt} tabIndex={0} onClick={() => setAt(i)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAt(i) } }}>
                   <span>{speakerName(p.g)}</span>
                   {!canSend(p) ? <span className="mstate warn">Blocked</span> : p.cc.length > 0 && includeCc ? <span className="tag">+ Cc</span> : null}
@@ -455,7 +458,7 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
                 <button aria-label="Previous" onClick={() => step2(-1)}><IconLeft /></button>
                 <button aria-label="Next" onClick={() => step2(1)}><IconRight /></button>
               </div>
-              <span className="muted num">{Math.min(at, prepared.length - 1) + 1} of {prepared.length}</span>
+              <span className="muted num">{shownAt + 1} of {prepared.length}</span>
               <span style={{ flex: 1 }} />
               {test.button(current.g.speakerKey)}
             </div>

@@ -46,17 +46,7 @@ export function compose(
   return { ok: true, talkIds: e.talkIds, cc, subject: opts.subjectOverride ?? r.subject, text: r.text }
 }
 
-/** Emails in flight: not yet sent, but may be (or may have been). */
-const IN_FLIGHT = new Set(['scheduled', 'queued', 'sending', 'unknown'])
-const isDecisionRule = (r: RecipientRule) => r === 'acceptance' || r === 'decline'
-
-/** A reason to skip when another email of the same template, or another decision email, is already on its way. */
-export function inFlightConflict(history: EmailDoc[], templateId: string | null, rule: RecipientRule): string | null {
-  const pending = history.filter((e) => IN_FLIGHT.has(e.state))
-  if (isDecisionRule(rule) && pending.some((e) => isDecisionRule(e.rule))) return 'Already has a decision email waiting to send'
-  if (templateId !== null && pending.some((e) => e.templateId === templateId)) return 'Already has this email waiting to send'
-  return null
-}
+export { inFlightConflict } from './recipients.js'
 
 /** States in which Gmail has, or may have, the message. */
 const CLAIMED = new Set(['sent', 'sending', 'unknown'])

@@ -48,6 +48,17 @@ export function needsFollowUp(g: SpeakerGroup, status: (id: string) => Status, h
   return approvedIds(g, status).filter((id) => !covered.has(id))
 }
 
+/** Emails in flight: not yet sent, but may be (or may have been). */
+export const IN_FLIGHT: ReadonlySet<EmailDoc['state']> = new Set<EmailDoc['state']>(['scheduled', 'queued', 'sending', 'unknown'])
+
+/** A reason to skip when another email of the same template, or another decision email, is already on its way. */
+export function inFlightConflict(history: EmailDoc[], templateId: string | null, rule: RecipientRule): string | null {
+  const pending = history.filter((e) => IN_FLIGHT.has(e.state))
+  if (isDecisionRule(rule) && pending.some((e) => isDecisionRule(e.rule))) return 'Already has a decision email waiting to send'
+  if (templateId !== null && pending.some((e) => e.templateId === templateId)) return 'Already has this email waiting to send'
+  return null
+}
+
 const NOT_READY = 'Not ready: a talk is still pending or maybe'
 
 // Whether this speaker can get an email under `rule`, and which talks it covers. `history` is this speaker's

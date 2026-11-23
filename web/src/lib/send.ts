@@ -1,6 +1,6 @@
 import { renderEmail } from '../../../functions/src/email/fillIns.ts'
 import {
-  decision, eligibility, fillInValues, needsFollowUp, type Eligibility, type SpeakerGroup,
+  decision, eligibility, fillInValues, inFlightConflict, needsFollowUp, type Eligibility, type SpeakerGroup,
 } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, EventField, RecipientRule, Status } from '../../../functions/src/model.ts'
 
@@ -22,14 +22,7 @@ export interface RecipientRow {
 }
 
 export const isDecisionRule = (r: RecipientRule) => r === 'acceptance' || r === 'decline'
-const IN_FLIGHT = new Set<EmailDoc['state']>(['scheduled', 'queued', 'sending', 'unknown'])
 export const ON_ITS_WAY = 'Already on its way'
-
-/** True when another email of this template, or (for decision templates) another decision email, is still going out. */
-export function onItsWay(history: EmailDoc[], templateId: string | null, rule: RecipientRule): boolean {
-  return history.some((e) => IN_FLIGHT.has(e.state)
-    && ((templateId !== null && e.templateId === templateId) || (isDecisionRule(rule) && isDecisionRule(e.rule))))
-}
 
 const ALREADY = new Set(['Already sent this template', 'Already had a decision email'])
 
@@ -44,7 +37,7 @@ export function recipientRows(rule: RecipientRule, templateId: string | null, gr
   return groups.map((g) => {
     const history = j.historyOf(g.speakerKey)
     const base = { g, decision: decision(g, j.status), cc: [] as string[] }
-    if (onItsWay(history, templateId, rule)) return { ...base, tab: 'not', reason: ON_ITS_WAY, already: false }
+    if (inFlightConflict(history, templateId, rule)) return { ...base, tab: 'not', reason: ON_ITS_WAY, already: false }
     const e = eligibility(rule, g, j.status, history, { speakerKeys: j.speakerKeys, templateId })
     if (e.ok) return { ...base, tab: 'ready', reason: null, already: false, cc: e.cc }
     if (rule === 'acceptance' && needsFollowUp(g, j.status, history).length > 0) {
@@ -52,6 +45,29 @@ export function recipientRows(rule: RecipientRule, templateId: string | null, gr
     }
     return { ...base, tab: 'not', reason: e.reason, already: ALREADY.has(e.reason) }
   })
+}
+
+export type DecisionFilter = 'all' | 'approved' | 'declined' | 'not-ready'
+export interface RowFilter { decision: DecisionFilter; hideAlready: boolean }
+
+/** Whether a row shows under the step 1 filters. */
+export const passes = (r: RecipientRow, f: RowFilter) =>
+  (f.decision === 'all' || r.decision === f.decision) && !(f.hideAlready && r.already)
+
+/**
+ * The speakers a batch goes to: ticked Ready rows the filters show. `hidden` counts ticked Ready rows the filters
+ * hide, which are left out.
+ */
+export function visibleSelection(rows: RecipientRow[], unticked: ReadonlySet<string>, f: RowFilter): { selected: string[]; hidden: number } {
+  const ticked = rows.filter((r) => r.tab === 'ready' && !unticked.has(r.g.speakerKey))
+  const selected = ticked.filter((r) => passes(r, f)).map((r) => r.g.speakerKey)
+  return { selected, hidden: ticked.length - selected.length }
+}
+
+/** "Ada Lovelace, Grace Hopper" — at most `max` names, then "+N more". */
+export function nameList(names: string[], max = 5): string {
+  const shown = names.slice(0, max).join(', ')
+  return names.length > max ? `${shown} +${names.length - max} more` : shown
 }
 
 export interface Prepared {
@@ -73,7 +89,7 @@ export function prepare(
   opts: { templateId: string | null; followUp: boolean },
 ): Prepared {
   const history = j.historyOf(g.speakerKey)
-  const e: Eligibility = onItsWay(history, opts.templateId, rule)
+  const e: Eligibility = inFlightConflict(history, opts.templateId, rule)
     ? { ok: false, reason: ON_ITS_WAY }
     : eligibility(rule, g, j.status, history, { speakerKeys: j.speakerKeys, templateId: opts.templateId, followUp: opts.followUp })
   const talkIds = e.ok ? e.talkIds : g.cards.map((c) => c.id)
