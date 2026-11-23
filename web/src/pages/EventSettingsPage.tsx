@@ -81,16 +81,16 @@ function EventForm({ initial }: { initial: EventField[] }) {
                 {rows.map((f, i) => {
                   const used = usedBy(f.key)
                   return (
-                    <div key={f.key} style={{ display: 'contents' }}>
+                    <div key={f.key} className="event-field">
                       <input className="input" aria-label="Label" value={f.label} readOnly={!admin} onChange={(e) => edit(i, { label: e.target.value })} />
                       <code>{`{{${f.key}}}`}</code>
-                      <div>
+                      <div className="ef-value">
                         <input className="input" aria-label={`${f.label || f.key} value`} value={f.value} readOnly={!admin}
                           placeholder="Empty: emails that use it won't send" onChange={(e) => edit(i, { value: e.target.value })} />
                         {used.length > 0 && <div className="hint" style={{ marginTop: 4 }}>Used in {used.join(', ')}</div>}
                       </div>
                       {admin ? (
-                        <button className="icon-btn" aria-label={`Remove ${f.label || f.key}`} style={{ margin: 0 }}
+                        <button className="icon-btn ef-x" aria-label={`Remove ${f.label || f.key}`} style={{ margin: 0 }}
                           onClick={() => { setSaved(false); setRows((r) => r.filter((_, j) => j !== i)) }}>×</button>
                       ) : <span />}
                     </div>
