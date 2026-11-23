@@ -14,7 +14,7 @@ import { ImportRefused } from './advocu/parseAdvocu.js';
 import { syncPhotos } from './photos/syncPhotos.js';
 import { refreshAi as runAiRefresh, AiNotFound } from './ai/refreshAi.js';
 import type { AiClient } from './ai/client.js';
-import type { SubmissionData } from './model.js';
+import type { MailMeta, SubmissionData } from './model.js';
 import { fakeSheet } from './testing/fakeRows.js';
 import { fakeAiClient } from './testing/fakeAiClient.js';
 import { delegatedGmail, type GmailClient } from './email/gmail.js';
@@ -24,7 +24,7 @@ import {
   rescheduleEmail as runRescheduleEmail, resolveUnknown, retryEmail as runRetryEmail, sendTestEmail as runSendTestEmail,
   type Actor, type EnqueueInput,
 } from './email/queue.js';
-import { attachmentFor, pollMail } from './email/pollMail.js';
+import { AttachmentTooLarge, attachmentFor, pollMail } from './email/pollMail.js';
 import { seedTemplates } from './email/seedTemplates.js';
 import { sharedFakeGmail } from './testing/fakeGmail.js';
 
@@ -303,8 +303,10 @@ export const markEmailed = onCall(mailOpts, async request => {
   const { templateId, speakerKeys: keys, at } = (request.data ?? {}) as { templateId?: unknown; speakerKeys?: unknown; at?: unknown };
   if (!isId(templateId)) throw bad('templateId must be a template id.');
   // Optional so a retried call (same `at`) creates nothing new; never in the future.
-  const when = at === undefined ? Date.now() : finiteTime(at, 'at');
-  if (when > Date.now() + 5 * 60 * 1000) throw bad('at must not be in the future.');
+  const now = Date.now();
+  const when = at === undefined ? now : finiteTime(at, 'at');
+  if (when > now + 5 * 60 * 1000) throw bad('at must not be in the future.');
+  if (when < now - 365 * 24 * 60 * 60 * 1000) throw bad('at must be within the last 365 days.');
   const created = await refusable(() => runMarkEmailed(getFirestore(), { templateId, speakerKeys: speakerKeys(keys), at: when }, by));
   return { created };
 });
@@ -317,13 +319,11 @@ export const emailAttachment = onCall(mailOpts, async request => {
   }
   let a;
   try {
-    a = await attachmentFor(getFirestore(), gmailClient(), threadId, messageId, attachmentId);
+    a = await attachmentFor(getFirestore(), gmailClient(), threadId, messageId, attachmentId, { maxBytes: MAX_ATTACHMENT_BYTES });
   } catch (e) {
+    if (e instanceof AttachmentTooLarge) throw new HttpsError('failed-precondition', 'This attachment is over 10 MB. Open it in Gmail instead.');
     if (e instanceof Error && e.message === 'Attachment not found') throw new HttpsError('not-found', e.message);
     throw e;
-  }
-  if (a.data.length > MAX_ATTACHMENT_BYTES) {
-    throw new HttpsError('failed-precondition', 'This attachment is over 10 MB. Open it in Gmail instead.');
   }
   return { name: a.name, mimeType: a.mimeType, base64: a.data.toString('base64') };
 });
@@ -333,11 +333,13 @@ async function sendDue() {
   const db = getFirestore();
   try {
     await seedTemplates(db);
-    return await processQueue(db, gmailClient(), { sender: MAIL_SENDER.value(), now: Date.now(), readAttachment });
+    const counts = await processQueue(db, gmailClient(), { sender: MAIL_SENDER.value(), now: Date.now(), readAttachment });
+    await db.doc('meta/mail').set({ sendError: null } satisfies Partial<MailMeta>, { merge: true });
+    return counts;
   } catch (e) {
     const code = errorCode(e);
     console.error(`Email queue: run failed (${code})`);
-    await db.doc('meta/mail').set({ error: `Sending failed (${code})` }, { merge: true });
+    await db.doc('meta/mail').set({ sendError: `Sending failed (${code})` } satisfies Partial<MailMeta>, { merge: true });
     throw e;
   }
 }
@@ -357,7 +359,7 @@ export const pollMailbox = onSchedule(
     } catch (e) {
       const code = errorCode(e);
       console.error(`Mail poll: run failed (${code})`);
-      await getFirestore().doc('meta/mail').set({ error: `Checking replies failed (${code})` }, { merge: true });
+      await getFirestore().doc('meta/mail').set({ pollError: `Checking replies failed (${code})` } satisfies Partial<MailMeta>, { merge: true });
       throw e;
     }
   },

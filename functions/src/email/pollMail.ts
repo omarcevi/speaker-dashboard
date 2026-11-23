@@ -68,7 +68,7 @@ export async function pollMail(
     }
   }
   const meta: Partial<MailMeta> = {
-    lastPollAt: Timestamp.fromMillis(opts.now), error: failed ? `${failed} ${failed === 1 ? 'thread' : 'threads'} could not be read` : null,
+    lastPollAt: Timestamp.fromMillis(opts.now), pollError: failed ? `${failed} ${failed === 1 ? 'thread' : 'threads'} could not be read` : null,
   }
   await db.doc('meta/mail').set(meta, { merge: true })
   if (replies || bounces || failed) console.log(`Mail poll: threads=${recent.size} replies=${replies} bounces=${bounces} failed=${failed}`)
@@ -160,15 +160,24 @@ async function pollThread(
   })
 }
 
-/** A reply attachment, only if that message is stored under that thread and lists that attachment. */
+/** An attachment over the caller's size limit, by its stored size (before download) or its real one. */
+export class AttachmentTooLarge extends Error {}
+
+/**
+ * A reply attachment, only if that message is stored under that thread and lists that attachment. With `maxBytes`,
+ * the stored size is checked before Gmail is asked for the file, and the downloaded size after.
+ */
 export async function attachmentFor(
-  db: Firestore, gmail: GmailClient, threadId: string, messageId: string, attachmentId: string,
+  db: Firestore, gmail: GmailClient, threadId: string, messageId: string, attachmentId: string, opts: { maxBytes?: number } = {},
 ): Promise<{ name: string; mimeType: string; data: Buffer }> {
   const notFound = () => new Error('Attachment not found')
   if (![threadId, messageId].every((x) => typeof x === 'string' && ID.test(x)) || typeof attachmentId !== 'string') throw notFound()
   const snap = await db.doc(`threads/${threadId}/messages/${messageId}`).get()
   const a = (snap.data() as ReceivedMessage | undefined)?.attachments?.find((x) => x.id === attachmentId)
   if (!a) throw notFound()
+  const max = opts.maxBytes ?? Infinity
+  if (a.size > max) throw new AttachmentTooLarge('Attachment is too large')
   const data = await gmail.getAttachment(messageId, attachmentId)
+  if (data.length > max) throw new AttachmentTooLarge('Attachment is too large')
   return { name: a.name, mimeType: a.mimeType, data }
 }

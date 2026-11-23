@@ -130,7 +130,7 @@ async function seedEmail() {
   }));
   batch.set(db.doc('threads/seed-thread-1/messages/seed-reply-1'), reply);
   batch.set(db.doc('threads/seed-thread-2'), thread('hedy@example.com', 'seed-msg-2', { lastSnippet: decline.text!.slice(0, 140) }));
-  batch.set(db.doc('meta/mail'), { lastSendAt: ts(2 * DAY), lastPollAt: ts(0), error: null });
+  batch.set(db.doc('meta/mail'), { lastSendAt: ts(2 * DAY), lastPollAt: ts(0), sendError: null, pollError: null });
   await batch.commit();
 }
 

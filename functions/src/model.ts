@@ -111,4 +111,5 @@ export interface ReceivedMessage {
   /** Set when text, quoted, subject, to/cc or attachments were cut to fit the stored limits. */
   truncated?: boolean;
 }
-export interface MailMeta { lastPollAt: Ts | null; lastSendAt: Ts | null; error: string | null } // meta/mail
+// meta/mail. Ruling 14: sendError is written only by the send run and pollError only by the reply check.
+export interface MailMeta { lastPollAt: Ts | null; lastSendAt: Ts | null; sendError: string | null; pollError: string | null }

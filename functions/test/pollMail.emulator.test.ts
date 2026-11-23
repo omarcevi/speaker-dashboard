@@ -4,7 +4,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { EmailDoc, MailMeta, ReceivedMessage, ThreadDoc } from '../src/model.js'
 import type { GmailClient } from '../src/email/gmail.js'
 import type { GmailMessage } from '../src/email/parseMessage.js'
-import { attachmentFor, pollMail } from '../src/email/pollMail.js'
+import { AttachmentTooLarge, attachmentFor, pollMail } from '../src/email/pollMail.js'
 import { fakeGmail, type FakeGmail } from '../src/testing/fakeGmail.js'
 
 const db = getFirestore(initializeApp({ projectId: 'demo-cfp' }))
@@ -111,7 +111,7 @@ describe('pollMail', () => {
     expect(t.lastTeamAt!.toMillis()).toBe(T0)
     expect(t.lastSnippet).toBe('Thanks, see you there!')
     expect(t.lastCheckedAt!.toMillis()).toBe(T0 + 2 * HOUR)
-    expect(await meta()).toMatchObject({ error: null })
+    expect(await meta()).toMatchObject({ pollError: null })
     expect((await meta()).lastPollAt!.toMillis()).toBe(T0 + 2 * HOUR)
 
     expect(await poll(T0 + 3 * HOUR)).toEqual({ threads: 1, replies: 0, bounces: 0 })
@@ -282,11 +282,11 @@ describe('pollMail', () => {
     expect(logged.mock.calls).toEqual([['Mail poll: thread th-1 could not be read (http 500)']])
     logged.mockRestore()
     expect(Object.keys(await messages('th-2'))).toEqual(['g-r2'])
-    expect((await meta()).error).toBe('1 thread could not be read')
+    expect((await meta()).pollError).toBe('1 thread could not be read')
     expect((await threadDoc('th-1')).lastCheckedAt).toBeNull()
 
     await poll(T0 + 3 * HOUR)
-    expect((await meta()).error).toBeNull()
+    expect((await meta()).pollError).toBeNull()
 
     const allFail: GmailClient = { ...gmail, getThread: async () => { throw Object.assign(new Error('boom ada@example.com'), { code: 14 }) } }
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -295,7 +295,7 @@ describe('pollMail', () => {
       'Mail poll: thread th-1 could not be read (code 14)', 'Mail poll: thread th-2 could not be read (code 14)',
     ])
     quiet.mockRestore()
-    expect((await meta()).error).toBe('2 threads could not be read')
+    expect((await meta()).pollError).toBe('2 threads could not be read')
   })
 
   it('attachment only for stored ids', async () => {
@@ -312,5 +312,21 @@ describe('pollMail', () => {
     await expect(attachmentFor(db, client, 'th-1', 'g-sent-1', 'att-1')).rejects.toThrow('not found')
     await expect(attachmentFor(db, client, 'th-2', 'g-r1', 'att-1')).rejects.toThrow('not found')
     await expect(attachmentFor(db, client, 'th-1/messages', 'g-r1', 'att-1')).rejects.toThrow('not found')
+
+    // The stored size is checked before Gmail is asked for the file.
+    let downloads = 0
+    const counting: GmailClient = { ...client, getAttachment: async () => { downloads++; return Buffer.alloc(0) } }
+    await expect(attachmentFor(db, counting, 'th-1', 'g-r1', 'att-1', { maxBytes: 2 })).rejects.toThrow(AttachmentTooLarge)
+    expect(downloads).toBe(0)
+    // A file bigger than its stored size is refused after download too.
+    const big: GmailClient = { ...client, getAttachment: async () => Buffer.alloc(10) }
+    await expect(attachmentFor(db, big, 'th-1', 'g-r1', 'att-1', { maxBytes: 5 })).rejects.toThrow(AttachmentTooLarge)
+  })
+
+  it('a poll never clears a send error', async () => {
+    await db.doc('meta/mail').set({ sendError: 'Sending failed (http 500)' }, { merge: true })
+    await poll(T0 + 2 * HOUR)
+    expect(await meta()).toMatchObject({ sendError: 'Sending failed (http 500)', pollError: null })
+    expect(await meta()).not.toHaveProperty('error')
   })
 })
