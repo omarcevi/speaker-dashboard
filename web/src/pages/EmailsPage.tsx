@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider.tsx'
 import Conversation, { StateChip } from '../components/Conversation.tsx'
 import EmailsTabs from '../components/EmailsTabs.tsx'
 import { useData } from '../data/DataProvider.tsx'
+import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { ago, isListed, lastActivity, latestLine, needsLook, shortDateTime } from '../lib/emails.ts'
 
@@ -28,7 +29,7 @@ export default function EmailsPage() {
   const { byKey, talkOf } = useSpeakers()
   const [filter, setFilter] = useState<Filter>('look')
   const [open, setOpen] = useState<string | null>(null)
-  const [now] = useState(() => Date.now())
+  const now = useNow()
 
   const threadOf = useMemo(() => {
     const map = new Map(threads.map((t) => [t.id, t]))

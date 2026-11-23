@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider.tsx'
 import EmailsTabs from '../components/EmailsTabs.tsx'
 import { deleteTemplate, saveTemplate } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
+import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { ago, emptyEventFillIns, RULE_ORDER, RULES } from '../lib/emails.ts'
 import { formatWhen } from '../lib/syncStatus.ts'
@@ -66,7 +67,7 @@ export default function TemplatesPage() {
   const { templates, emails, event, mailMeta, loading } = useData()
   const { groups, eligible } = useSpeakers()
   const navigate = useNavigate()
-  const [now] = useState(() => Date.now())
+  const now = useNow()
 
   const list = useMemo(
     () => [...templates].sort((a, b) => RULE_ORDER.indexOf(a.rule) - RULE_ORDER.indexOf(b.rule) || a.name.localeCompare(b.name)),

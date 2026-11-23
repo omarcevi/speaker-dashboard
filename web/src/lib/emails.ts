@@ -137,6 +137,13 @@ export function safeFileName(name: string): string {
   return s === '' || /^\.+$/.test(s) ? 'file' : s
 }
 
+/** The name people see for an attachment: kept as typed, minus path separators and control characters. */
+export function displayFileName(name: string): string {
+  // eslint-disable-next-line no-control-regex
+  const s = name.replace(/[/\\\u0000-\u001f\u007f]/g, '').trim()
+  return s === '' ? 'file' : s
+}
+
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 export function formatBytes(n: number): string {

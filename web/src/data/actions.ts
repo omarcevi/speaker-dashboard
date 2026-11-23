@@ -2,7 +2,7 @@ import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc,
 import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import type { EmailTemplate, EventField, RecipientRule, Role, Status, TemplateAttachment } from '../../../functions/src/model.ts'
 import { db, storage } from '../firebase.ts'
-import { safeFileName } from '../lib/emails.ts'
+import { displayFileName, safeFileName } from '../lib/emails.ts'
 
 export interface Actor { uid: string; name: string }
 
@@ -84,8 +84,9 @@ export async function deleteTemplate(id: string): Promise<void> {
 export const newTemplateId = (): string => doc(collection(db, 'templates')).id
 
 export async function uploadTemplateAttachment(templateId: string, file: File): Promise<TemplateAttachment> {
-  const name = safeFileName(file.name)
-  const path = `emailAttachments/${templateId}/${Date.now()}-${name}`
+  // Only the Storage path is made safe; the name people see keeps its letters (the backend encodes non-ASCII names).
+  const path = `emailAttachments/${templateId}/${Date.now()}-${safeFileName(file.name)}`
+  const name = displayFileName(file.name)
   await uploadBytes(storageRef(storage, path), file, { contentType: file.type || 'application/octet-stream' })
   return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
 }

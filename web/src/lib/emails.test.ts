@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
-  ago, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
+  ago, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
 } from './emails.ts'
 
@@ -212,5 +212,13 @@ describe('emptyEventFillIns and unknownFillIns', () => {
     const t = { subject: '{{eventName}}', body: 'Hi {{firstName}}, at {{venue}} {{wifi}}' }
     expect(emptyEventFillIns(t, fields)).toEqual(['venue'])
     expect(unknownFillIns(t, fields)).toEqual(['wifi'])
+  })
+})
+
+describe('displayFileName', () => {
+  it('keeps the name as typed, minus separators and control characters', () => {
+    expect(displayFileName(' Şişli harita.pdf ')).toBe('Şişli harita.pdf')
+    expect(displayFileName('a/b\\c\u0007.pdf')).toBe('abc.pdf')
+    expect(displayFileName('//')).toBe('file')
   })
 })

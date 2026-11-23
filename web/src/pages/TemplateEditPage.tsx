@@ -156,8 +156,8 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
     if (files.length === 0) return
     setFileError(null)
     const total = draft.attachments.reduce((n, a) => n + a.size, 0) + files.reduce((n, f) => n + f.size, 0)
-    if (total > MAX_ATTACHMENT_BYTES) {
-      setFileError(`Attachments can be 20 MB in total; this would make ${formatBytes(total)}.`)
+    if (total >= MAX_ATTACHMENT_BYTES) {
+      setFileError(`Attachments must stay under 20 MB in total; this would make ${formatBytes(total)}.`)
       return
     }
     if (draft.attachments.length + files.length > MAX_ATTACHMENTS) {
