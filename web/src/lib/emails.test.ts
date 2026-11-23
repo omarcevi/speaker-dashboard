@@ -3,6 +3,7 @@ import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
   ago, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
+  emailTitle, historyChipLabel, historyByLine, speakerHistory, emailedLine, istanbulTime,
 } from './emails.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
@@ -220,5 +221,47 @@ describe('displayFileName', () => {
     expect(displayFileName(' Şişli harita.pdf ')).toBe('Şişli harita.pdf')
     expect(displayFileName('a/b\\c\u0007.pdf')).toBe('abc.pdf')
     expect(displayFileName('//')).toBe('file')
+  })
+})
+
+describe('talk page history helpers', () => {
+  it('names an email by its template, else its subject', () => {
+    expect(emailTitle(email())).toBe('Acceptance')
+    expect(emailTitle(email({ templateId: null, templateName: '', subject: 'Slot question' }))).toBe('Slot question')
+    expect(emailTitle(email({ templateId: null, templateName: '', subject: null, request: { followUp: false, includeCc: false, custom: { subject: 'Later', body: 'b' } } }))).toBe('Later')
+    expect(emailTitle(email({ templateId: null, templateName: '', subject: null }))).toBe('Custom email')
+  })
+
+  it('keeps the held reason out of the history chip', () => {
+    expect(historyChipLabel(email({ state: 'held', reason: 'No address' }))).toBe('Held')
+    expect(historyChipLabel(email())).toBe('Sent 20 Nov')
+  })
+
+  it('says who sent it and when', () => {
+    expect(historyByLine(email({ byName: 'Ada' }))).toBe('Ada · 20 Nov, 11:00')
+    expect(historyByLine(email({ byName: 'Ada', cc: ['co@example.com', 'two@example.com'] }))).toBe('Ada · 20 Nov, 11:00 · cc co@example.com, two@example.com')
+    expect(historyByLine(email({ byName: 'Ada', manual: true }))).toBe('Marked by Ada · 20 Nov · sent outside the dashboard')
+    expect(historyByLine(email({ byName: 'Ada', state: 'scheduled', sentAt: null }))).toBe('Scheduled by Ada')
+    expect(historyByLine(email({ byName: 'Ada', state: 'cancelled', sentAt: null, createdAt: ts(Date.UTC(2026, 10, 21, 9, 5)), reason: 'Cancelled by Bo' })))
+      .toBe('Ada · 21 Nov, 12:05 · Cancelled by Bo')
+  })
+
+  it('lists a speaker\'s emails newest first, replies folded into their conversation', () => {
+    const a = email({ createdAt: ts(1) })
+    const b = email({ createdAt: ts(3) })
+    const reply = email({ createdAt: ts(4), replyToThreadId: 'th1' })
+    const failedReply = email({ createdAt: ts(5), replyToThreadId: 'th1', state: 'failed' })
+    const other = email({ createdAt: ts(2), speakerKey: 'bo@example.com' })
+    expect(speakerHistory([a, b, reply, failedReply, other], 'ada@example.com')).toEqual([failedReply, b, a])
+  })
+
+  it('writes the header line from the last decision email', () => {
+    expect(emailedLine(email())).toBe('Emailed: Acceptance · 20 Nov')
+    expect(emailedLine(email({ manual: true, sentAt: null, createdAt: ts(Date.UTC(2026, 10, 18, 22, 0)) }))).toBe('Emailed: Acceptance · 19 Nov')
+  })
+
+  it('reads a time of day in Istanbul', () => {
+    expect(istanbulTime(Date.UTC(2026, 11, 5, 6, 0))).toBe('09:00')
+    expect(istanbulTime(Date.UTC(2026, 11, 5, 21, 30))).toBe('00:30')
   })
 })

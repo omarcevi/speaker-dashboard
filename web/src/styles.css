@@ -525,3 +525,18 @@ tr.off .cell-main { color: var(--muted); }
 .att-btn[disabled] { cursor: default; color: var(--faint); }
 .fill-bad-hint { cursor: help; }
 @media (max-width: 720px) { .sheet .note { margin-left: 16px; } }
+/* Talk page: the quiet "Emailed" header line, the Emails card's menu and row actions (talk.html) */
+.object .emailed { margin-top: 6px; }
+.object .emailed b { font-weight: 500; color: var(--text); }
+.menu-wrap { position: relative; }
+.email-menu { position: absolute; right: 0; top: 40px; z-index: 5; width: 240px; padding: 6px; box-shadow: 0 8px 24px -12px rgba(32, 33, 36, 0.35); } /* taste-skill-ignore: a menu over the card */
+.email-menu li a { flex: 1; text-decoration: none; color: inherit; }
+.email-menu li.off { color: var(--faint); cursor: default; }
+.email-menu li.off:hover { background: none; }
+.email-menu li .hint { display: block; color: var(--faint); }
+.email-menu li.custom { border-top: 1px solid var(--rule); border-radius: 0; margin-top: 4px; padding-top: 10px; }
+.hist .inline-error { grid-column: 1 / -1; }
+.hist .acts { align-items: center; }
+.hist .acts .input { width: auto; height: 32px; }
+/* The room sees the "Emailed" line; the card itself (addresses, admin actions) stays off the projector. */
+html.projector .emails-card { display: none; }

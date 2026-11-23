@@ -26,9 +26,9 @@ function Text({ text }: { text: string }) {
   )
 }
 
-export function StateChip({ email }: { email: EmailDoc }) {
+export function StateChip({ email, label }: { email: EmailDoc; label?: string }) {
   const tone = stateTone(email)
-  return <span className={tone ? `mstate ${tone}` : 'mstate'}>{stateLabel(email)}</span>
+  return <span className={tone ? `mstate ${tone}` : 'mstate'}>{label ?? stateLabel(email)}</span>
 }
 
 function download(name: string, mimeType: string, base64: string) {

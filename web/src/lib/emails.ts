@@ -109,6 +109,36 @@ export function isListed(e: EmailDoc): boolean {
   return e.replyToThreadId === null || needsLook(e, undefined)
 }
 
+/** An email's name in lists: its template's name, else the custom subject. */
+export function emailTitle(e: EmailDoc): string {
+  if (e.templateId !== null) return e.templateName || 'Email'
+  return e.subject || e.request?.custom?.subject || 'Custom email'
+}
+
+/** The chip in a speaker's history. A held email's reason goes in the notice under it, not the chip. */
+export const historyChipLabel = (e: EmailDoc): string => (e.state === 'held' ? 'Held' : stateLabel(e))
+
+/** Who and when, under a row of a speaker's history. */
+export function historyByLine(e: EmailDoc): string {
+  const at = (e.sentAt ?? e.createdAt).toMillis()
+  if (e.manual) return `Marked by ${e.byName} · ${shortDate(at)} · sent outside the dashboard`
+  if (e.state === 'scheduled') return `Scheduled by ${e.byName}`
+  const cc = e.cc.length > 0 ? ` · cc ${e.cc.join(', ')}` : ''
+  const cancelled = e.state === 'cancelled' && e.reason ? ` · ${e.reason}` : ''
+  return `${e.byName} · ${shortDateTime(at)}${cc}${cancelled}`
+}
+
+/** One speaker's emails for the talk page, newest first; replies sent from the dashboard live in their conversation. */
+export function speakerHistory<T extends EmailDoc>(emails: T[], speakerKey: string): T[] {
+  return emails.filter((e) => e.speakerKey === speakerKey && isListed(e)).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+}
+
+/** The quiet talk-header line: "Emailed: Acceptance · 20 Nov". */
+export const emailedLine = (e: EmailDoc): string => `Emailed: ${emailTitle(e)} · ${shortDate((e.sentAt ?? e.createdAt).toMillis())}`
+
+/** "09:00": the time of day in Istanbul, for a time input. */
+export const istanbulTime = (ms: number) => new Date(ms + 3 * 3600_000).toISOString().slice(11, 16)
+
 /** Text split into plain parts and http(s) links. Trailing punctuation stays outside a link. */
 export function linkParts(text: string): { text: string; href?: string }[] {
   const out: { text: string; href?: string }[] = []
