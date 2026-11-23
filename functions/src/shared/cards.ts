@@ -1,3 +1,4 @@
+// Shared with the web app (Vite bundles it). May import only ../model.js, ../talkKey.js and other files in shared/.
 import type { AdvocuDetails, Source, Submission } from '../model.js'
 import { talkKey } from '../talkKey.js'
 import { submittedAtMs } from './time.js'

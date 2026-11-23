@@ -1,3 +1,4 @@
+// Shared with the web app (Vite bundles it). May import only ../model.js, ../talkKey.js and other files in shared/.
 import type { Submission } from '../model.js'
 
 // Form timestamps are M/D/YYYY H:MM:SS in Istanbul time (UTC+3, no DST).
