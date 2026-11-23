@@ -56,11 +56,16 @@ const CLAIMED = new Set(['sent', 'sending', 'unknown'])
 
 /**
  * Checked again inside the send claim, against the speaker's other emails: a second decision email, or a second copy
- * of the same template, is held rather than sent. An explicit follow-up is exempt (it is the confirmed resend).
+ * of the same template, is held rather than sent. An explicit follow-up is exempt (it is the confirmed resend), except
+ * from another follow-up of the same template claimed after this one was written (two admins at once).
  */
 export function sendTimeConflict(e: EmailDoc, others: EmailDoc[]): string | null {
-  if (e.request?.followUp) return null
   const claimed = others.filter((o) => CLAIMED.has(o.state))
+  if (e.request?.followUp) {
+    const after = (o: EmailDoc) => ((o.sentAt ?? o.claimedAt)?.toMillis() ?? 0) > e.createdAt.toMillis()
+    const twin = claimed.some((o) => o.request?.followUp && o.templateId === e.templateId && after(o))
+    return twin ? 'Already sent this follow-up' : null
+  }
   if (e.isDecision && claimed.some((o) => o.isDecision)) return 'Already had a decision email'
   if (e.templateId !== null && claimed.some((o) => o.templateId === e.templateId)) return 'Already sent this template'
   return null

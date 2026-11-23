@@ -153,7 +153,14 @@ export async function processQueue(
     const loaded = await loadSpeakers(db)
     for (const d of due) {
       const e = d.data() as EmailDoc
-      const update = await writeScheduled(db, e, loaded)
+      let update: Partial<EmailDoc>
+      try {
+        update = await writeScheduled(db, e, loaded)
+      } catch {
+        // One bad email (e.g. odd data written outside the UI) must not stop the rest of the run.
+        console.error(`Email queue: could not prepare ${d.id}`)
+        update = { state: 'held', reason: 'Could not prepare this email' }
+      }
       const moved = await db.runTransaction(async (tx) => {
         const s = await tx.get(d.ref)
         if (s.get('state') !== 'scheduled' || (s.get('sendAt') as Timestamp).toMillis() > opts.now) return false
@@ -170,6 +177,8 @@ export async function processQueue(
     .slice(0, MAX_PER_RUN)
   const sleep = opts.sleep ?? defaultSleep
   const clock = opts.clock ?? Date.now
+  // Who an email may go to is judged again now: a status can change while an email waits, is retried or requeued.
+  const current = queued.length ? await loadSpeakers(db) : null
   let calledGmail = false
   for (const d of queued) {
     // The claim re-checks, against everything already sent or being sent, that this email isn't a second decision
@@ -178,6 +187,11 @@ export async function processQueue(
       const s = await tx.get(d.ref)
       if (s.get('state') !== 'queued') return null
       const doc = s.data() as EmailDoc
+      const refusal = current && stillEligible(doc, current)
+      if (refusal) {
+        tx.update(d.ref, { state: 'held', reason: refusal })
+        return 'held' as const
+      }
       const others = (await tx.get(emails.where('speakerKey', '==', doc.speakerKey))).docs
         .filter((o) => o.id !== d.id).map((o) => o.data() as EmailDoc)
       const conflict = sendTimeConflict(doc, others)
@@ -198,11 +212,24 @@ export async function processQueue(
     let result: { id: string; threadId: string }
     try {
       prepared = await prepare(e, gmail, opts)
+    } catch (err) {
+      // Nothing reached Gmail: a visible failure the admin can retry by hand.
+      await markFailed(db, d.ref, 'failed', errorText(err))
+      counts.failed++
+      continue
+    }
+    try {
       result = await gmail.send(prepared.raw, e.threadId ?? undefined)
     } catch (err) {
-      // Nothing reached Gmail (or Gmail refused it): a visible failure the admin can retry by hand.
-      await markFailed(db, d.ref, errorText(err))
-      counts.failed++
+      // Gmail refused it (4xx) or we never reached it: failed. A 5xx, timeout or network error can come after Gmail
+      // took the message, so it may have been sent: unknown, never resent automatically.
+      if (gmailRefused(err)) {
+        await markFailed(db, d.ref, 'failed', errorText(err))
+        counts.failed++
+      } else {
+        await markFailed(db, d.ref, 'unknown', UNKNOWN_REASON)
+        counts.unknown++
+      }
       continue
     }
     try {
@@ -263,16 +290,22 @@ async function writeScheduled(
 
 interface Prepared { raw: string; messageId: string }
 
+/** Attachments are read only from `emailAttachments/<template id>/…`, admin-uploaded; no `..` or empty segments. */
+const attachmentAllowed = (path: string) => {
+  const parts = path.split('/')
+  return parts.length >= 3 && parts[0] === 'emailAttachments' && parts.every((p) => p !== '' && p !== '.' && p !== '..')
+}
+
 type Sendable = Pick<EmailDoc, 'to' | 'cc' | 'subject' | 'text' | 'templateId' | 'attachments' | 'replyToThreadId'>
 
 /** Reads the attachments and reply headers and builds the message. Throws on anything that must not be sent. */
 async function prepare(e: Sendable, gmail: GmailClient, opts: Pick<ProcessOpts, 'sender' | 'readAttachment'>): Promise<Prepared> {
   if (e.subject === null || e.text === null) throw new Error('Email was not written')
-  const folder = e.templateId === null ? null : `emailAttachments/${e.templateId}/`
   const attachments: { name: string; contentType: string; data: Buffer }[] = []
   let total = 0
   for (const a of e.attachments) {
-    if (folder === null || !a.path.startsWith(folder) || a.path.split('/').includes('..')) throw new Error('Attachment not allowed')
+    // Any template's folder: "Duplicate" copies the original template's attachment paths (Ruling 17).
+    if (!attachmentAllowed(a.path)) throw new Error('Attachment not allowed')
     const data = await opts.readAttachment(a.path)
     total += data.length
     if (total > MAX_ATTACHMENTS_BYTES) throw new Error('Attachments are over 20 MB')
@@ -297,11 +330,41 @@ async function prepare(e: Sendable, gmail: GmailClient, opts: Pick<ProcessOpts, 
   return { raw, messageId }
 }
 
-async function markFailed(db: Firestore, ref: DocumentReference, reason: string): Promise<void> {
+async function markFailed(db: Firestore, ref: DocumentReference, state: 'failed' | 'unknown', reason: string): Promise<void> {
   await db.runTransaction(async (tx) => {
     const s = await tx.get(ref)
-    if (s.get('state') === 'sending') tx.update(ref, { state: 'failed', reason })
+    if (s.get('state') === 'sending') tx.update(ref, { state, reason })
   })
+}
+
+/**
+ * Whether a Gmail send error means the message was certainly not sent: an HTTP 4xx (gmail.ts puts the status in the
+ * message, "Gmail send failed (400)") or an auth failure before the send call. Anything else may have been sent.
+ */
+export function gmailRefused(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.startsWith('Gmail auth')) return true
+  const status = /\((\d{3})\)/.exec(msg)?.[1]
+  return status !== undefined && status.startsWith('4')
+}
+
+/**
+ * Null when the queued email may still go to its speaker as written; otherwise the reason to hold it. Custom emails
+ * and replies (rule "anyone") always may. `loaded` comes from the start of the run; the claim's sendTimeConflict
+ * covers emails sent during it.
+ */
+function stillEligible(e: EmailDoc, loaded: Awaited<ReturnType<typeof loadSpeakers>>): string | null {
+  if (e.rule === 'anyone') return null
+  const g = loaded.groups.find((x) => x.speakerKey === e.speakerKey)
+  if (!g) return 'Speaker has no talks'
+  // This email's own doc is in the history (batch id + speaker key is its id); it must not count against itself.
+  const history = loaded.historyOf(e.speakerKey).filter((h) => h.batchId !== e.batchId)
+  const r = eligibility(e.rule, g, loaded.status, history, {
+    speakerKeys: new Set(loaded.groups.map((x) => x.speakerKey)), followUp: e.request?.followUp ?? false, templateId: e.templateId,
+  })
+  if (!r.ok) return r.reason
+  if (!e.talkIds.every((id) => r.talkIds.includes(id))) return 'Talks changed since this email was written'
+  return null
 }
 
 /** Records the send and upserts the thread (Ruling 2: lastTeamAt and lastSnippet). */

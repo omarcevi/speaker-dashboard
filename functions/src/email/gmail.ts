@@ -58,10 +58,16 @@ export function delegatedGmail(opts: { serviceAccount: string; sender: string },
     return cached.token
   }
 
+  // Any error before the Gmail call starts with "Gmail auth", so the queue knows nothing reached Gmail.
+  const authToken = () => token().catch((e: unknown) => {
+    throw e instanceof Error && e.message.startsWith('Gmail auth') ? e : new Error('Gmail auth failed')
+  })
+
   async function call<T>(what: string, path: string, init?: { body?: unknown }): Promise<T> {
+    const bearer = await authToken()
     const res = await doFetch(`${GMAIL}${path}`, {
       method: init?.body === undefined ? 'GET' : 'POST',
-      headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
       body: init?.body === undefined ? undefined : JSON.stringify(init.body),
     })
     if (!res.ok) throw new Error(`Gmail ${what} failed (${res.status})`)

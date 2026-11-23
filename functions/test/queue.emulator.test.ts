@@ -206,24 +206,123 @@ describe('queue', () => {
     expect(header(gmail.sent[0].raw, 'To')).toBe(ADA)
   })
 
-  it('gmail failure marks failed', async () => {
+  it('gmail 4xx marks failed', async () => {
     await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
-    gmail.failNext(new Error('Gmail send failed (500)'))
+    gmail.failNext(new Error('Gmail send failed (400)'))
     expect(await run(T0)).toEqual({ sent: 0, failed: 1, held: 0, unknown: 0 })
-    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'failed', reason: 'Gmail send failed (500)', gmailMessageId: null })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'failed', reason: 'Gmail send failed (400)', gmailMessageId: null })
     expect(await run(T0 + MIN)).toEqual({ sent: 0, failed: 0, held: 0, unknown: 0 })
     expect(gmail.sent).toHaveLength(0)
   })
 
-  it('attachments outside the template folder fail the email', async () => {
+  it('gmail auth errors mark failed: nothing reached Gmail', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    gmail.failNext(new Error('Gmail auth failed'))
+    expect(await run(T0)).toEqual({ sent: 0, failed: 1, held: 0, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'failed', reason: 'Gmail auth failed' })
+  })
+
+  it('gmail 5xx, timeouts and network errors mark unknown: it may have been sent', async () => {
+    await talk('row-4', 4, 'lin@example.com', 'Lin', 'Fake Kernels', 'approved')
+    await enqueue(db, input({ speakerKeys: [ADA, GRACE, 'lin@example.com'] }), admin, T0)
+    const errors = [new Error('Gmail send failed (503)'), new Error('fetch failed'), new Error('The operation was aborted due to timeout')]
+    const send = gmail.send.bind(gmail)
+    gmail.send = async () => { throw errors.shift()! }
+    expect(await run(T0)).toEqual({ sent: 0, failed: 0, held: 0, unknown: 3 })
+    gmail.send = send
+    for (const k of [ADA, GRACE, 'lin@example.com']) {
+      expect(await email(idFor('b1', k))).toMatchObject({ state: 'unknown', reason: 'May have been sent, check Gmail Sent' })
+    }
+    expect(await run(T0 + 20 * MIN)).toEqual({ sent: 0, failed: 0, held: 0, unknown: 0 })
+  })
+
+  it('attachments must be under emailAttachments/: a duplicated template sends the original files', async () => {
     const pdf = { name: 'Guide.pdf', size: 3, contentType: 'application/pdf' }
     await template('t-acc', { attachments: [{ path: 'emailAttachments/t-acc/guide.pdf', ...pdf }] })
-    await template('t-bad', { attachments: [{ path: 'emailAttachments/t-acc/guide.pdf', ...pdf }], rule: 'approved' })
+    // "Duplicate" copies the attachment paths as they are, into the original template's folder.
+    await template('t-copy', { attachments: [{ path: 'emailAttachments/t-acc/guide.pdf', ...pdf }], rule: 'approved' })
+    await template('t-bad', { attachments: [{ path: 'secrets/guide.pdf', ...pdf }], rule: 'anyone' })
+    await template('t-dots', { attachments: [{ path: 'emailAttachments/../secrets/guide.pdf', ...pdf }], rule: 'anyone' })
+    await template('t-abs', { attachments: [{ path: '/emailAttachments/t-acc/guide.pdf', ...pdf }], rule: 'anyone' })
     await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
-    await enqueue(db, input({ batchId: 'b2', templateId: 't-bad', speakerKeys: [GRACE] }), admin, T0)
-    expect(await run(T0)).toEqual({ sent: 1, failed: 1, held: 0, unknown: 0 })
+    await enqueue(db, input({ batchId: 'b2', templateId: 't-copy', speakerKeys: [GRACE] }), admin, T0)
+    await enqueue(db, input({ batchId: 'b3', templateId: 't-bad', speakerKeys: [GRACE] }), admin, T0)
+    await enqueue(db, input({ batchId: 'b4', templateId: 't-dots', speakerKeys: [GRACE] }), admin, T0)
+    await enqueue(db, input({ batchId: 'b5', templateId: 't-abs', speakerKeys: [GRACE] }), admin, T0)
+    expect(await run(T0)).toEqual({ sent: 2, failed: 3, held: 0, unknown: 0 })
     expect(rawText(gmail.sent[0].raw)).toContain('filename="Guide.pdf"')
-    expect(await email(idFor('b2', GRACE))).toMatchObject({ state: 'failed', reason: 'Attachment not allowed' })
+    expect(rawText(gmail.sent[1].raw)).toContain('filename="Guide.pdf"')
+    expect(await email(idFor('b2', GRACE))).toMatchObject({ state: 'sent' })
+    for (const b of ['b3', 'b4', 'b5']) {
+      expect(await email(idFor(b, GRACE))).toMatchObject({ state: 'failed', reason: 'Attachment not allowed' })
+    }
+  })
+
+  it('a queued acceptance is held when the talk is declined before the run', async () => {
+    await enqueue(db, input(), admin, T0)
+    await setStatus('row-2', 'declined')
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 1, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'held', reason: 'No approved talk' })
+    expect(header(gmail.sent[0].raw, 'To')).toBe(GRACE)
+  })
+
+  it('a queued acceptance is held when one of its talks is no longer approved', async () => {
+    await talk('row-4', 4, ADA, 'Ada', 'Fake Parsers', 'approved')
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    await setStatus('row-4', 'declined')
+    expect(await run(T0 + MIN)).toEqual({ sent: 0, failed: 0, held: 1, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'held', reason: 'Talks changed since this email was written' })
+  })
+
+  it('retried failed and requeued unknown emails are re-checked before sending', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    gmail.failNext(new Error('Gmail send failed (400)'))
+    expect(await run(T0)).toMatchObject({ failed: 1 })
+    await enqueue(db, input({ batchId: 'b2', speakerKeys: [GRACE] }), admin, T0)
+    await db.doc(`emails/${idFor('b2', GRACE)}`).update({ state: 'unknown', reason: 'May have been sent, check Gmail Sent' })
+    await setStatus('row-2', 'declined')
+    await setStatus('row-3', 'declined')
+    await retryEmail(db, idFor('b1', ADA), admin)
+    await resolveUnknown(db, idFor('b2', GRACE), 'requeue', admin)
+    expect(await run(T0 + MIN)).toEqual({ sent: 0, failed: 0, held: 2, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'held', reason: 'No approved talk' })
+    expect(await email(idFor('b2', GRACE))).toMatchObject({ state: 'held', reason: 'No approved talk' })
+    expect(gmail.sent).toHaveLength(0)
+  })
+
+  it('a custom email to anyone still sends after a status change', async () => {
+    await enqueue(db, input({ templateId: null, custom: { subject: 'Hello', body: 'Hi {{firstName}}' }, speakerKeys: [ADA] }), admin, T0)
+    await setStatus('row-2', 'declined')
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 0, unknown: 0 })
+  })
+
+  it('two concurrent follow-ups of the same template send once', async () => {
+    expect(await markEmailed(db, { templateId: 't-acc', speakerKeys: [ADA], at: T0 - 60 * MIN }, admin)).toBe(1)
+    await talk('row-4', 4, ADA, 'Ada', 'Fake Parsers', 'approved')
+    await enqueue(db, input({ batchId: 'f1', speakerKeys: [ADA], followUp: true }), admin, T0)
+    expect(await email(idFor('f1', ADA))).toMatchObject({ state: 'queued', talkIds: ['row-4'] })
+    // A second admin's follow-up that passed enqueue's check before the first doc existed.
+    await db.doc(`emails/${idFor('f2', ADA)}`).set({ ...(await email(idFor('f1', ADA))), batchId: 'f2' })
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 1, unknown: 0 })
+    expect(gmail.sent).toHaveLength(1)
+    const states = [(await email(idFor('f1', ADA))).state, (await email(idFor('f2', ADA))).state].sort()
+    expect(states).toEqual(['held', 'sent'])
+    const held = (await email(idFor('f1', ADA))).state === 'held' ? idFor('f1', ADA) : idFor('f2', ADA)
+    expect(await email(held)).toMatchObject({ reason: 'Already sent this follow-up' })
+  })
+
+  it('one scheduled email that cannot be prepared does not stop the others', async () => {
+    await enqueue(db, input({ sendAt: T0 + 60 * MIN }), admin, T0)
+    // A non-string event value, written outside the UI, makes this email throw while it is written.
+    await db.doc(`emails/${idFor('b1', ADA)}`).update({
+      templateId: null, rule: 'anyone', isDecision: false,
+      request: { followUp: false, includeCc: true, custom: { subject: 's', body: '{{venue}}' } },
+    })
+    await db.doc('meta/event').set({ fields: [{ key: 'venue', label: 'Venue', value: 42 }] })
+    await template('t-acc', { body: 'Hi {{firstName}}' })
+    expect(await run(T0 + 61 * MIN)).toEqual({ sent: 1, failed: 0, held: 1, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'held', reason: 'Could not prepare this email' })
+    expect(await email(idFor('b1', GRACE))).toMatchObject({ state: 'sent' })
   })
 
   it('cancel only before sending', async () => {
@@ -295,7 +394,7 @@ describe('queue', () => {
   it('retry puts a failed email back in the queue with its content', async () => {
     await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
     const id = idFor('b1', ADA)
-    gmail.failNext(new Error('Gmail send failed (500)'))
+    gmail.failNext(new Error('Gmail send failed (400)'))
     await run(T0)
     const failed = await email(id)
     await retryEmail(db, id, admin)

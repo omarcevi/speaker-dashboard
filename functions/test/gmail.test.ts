@@ -113,4 +113,24 @@ describe('delegatedGmail', () => {
     await expect(g.send(raw)).rejects.toThrow(/403/)
     await expect(g.send(raw)).rejects.not.toThrow(/secret@/)
   })
+
+  it('auth failures, including a signJwt network error, start with "Gmail auth" (nothing reached Gmail)', async () => {
+    const authRequest = vi.fn(async () => { throw new Error('socket hang up') })
+    const fetchFn = vi.fn(async () => new Response('{}'))
+    const g = delegatedGmail({ serviceAccount: 's', sender: 'x@example.com' }, { authRequest, fetch: fetchFn as unknown as typeof fetch })
+    await expect(g.send(raw)).rejects.toThrow(/^Gmail auth failed$/)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+})
+
+describe('gmailRefused', () => {
+  it('is true only for 4xx and auth errors', async () => {
+    const { gmailRefused } = await import('../src/email/queue.js')
+    expect(gmailRefused(new Error('Gmail send failed (400)'))).toBe(true)
+    expect(gmailRefused(new Error('Gmail send failed (429)'))).toBe(true)
+    expect(gmailRefused(new Error('Gmail auth: token exchange failed (500)'))).toBe(true)
+    expect(gmailRefused(new Error('Gmail send failed (500)'))).toBe(false)
+    expect(gmailRefused(new Error('fetch failed'))).toBe(false)
+    expect(gmailRefused('x')).toBe(false)
+  })
 })
