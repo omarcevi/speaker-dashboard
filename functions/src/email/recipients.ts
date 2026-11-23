@@ -1,5 +1,5 @@
 // Shared with the web app (Vite bundles it, so the send flow judges recipients like the server). May import only
-// ../model.js, ../talkKey.js and other files in shared/ or email/.
+// ../model.js, ../talkKey.js, ../shared/* and ./fillIns.js.
 import type { EmailDoc, EventField, RecipientRule, Status } from '../model.js'
 import type { Card } from '../shared/cards.js'
 import { compareSubmitted } from '../shared/time.js'
@@ -34,6 +34,7 @@ export type Eligibility = { ok: true; talkIds: string[]; cc: string[]; flags: st
 
 const isSent = (e: EmailDoc) => e.state === 'sent'
 const isDecisionRule = (r: RecipientRule) => r === 'acceptance' || r === 'decline'
+const isDecisionEmail = (e: EmailDoc) => isDecisionRule(e.rule)
 const approvedIds = (g: SpeakerGroup, status: (id: string) => Status) =>
   g.cards.filter((c) => status(c.id) === 'approved').map((c) => c.id)
 const coEmail = (c: Card) => c.coSpeaker?.email.trim().toLowerCase() ?? ''
@@ -42,7 +43,7 @@ const coEmail = (c: Card) => c.coSpeaker?.email.trim().toLowerCase() ?? ''
 // (before that they belong in a batch). A decline never covers a talk that was approved later.
 export function needsFollowUp(g: SpeakerGroup, status: (id: string) => Status, history: EmailDoc[]): string[] {
   const sent = history.filter(isSent)
-  if (!sent.some((e) => e.isDecision)) return []
+  if (!sent.some(isDecisionEmail)) return []
   const covered = new Set(sent.filter((e) => e.rule === 'acceptance').flatMap((e) => e.talkIds))
   return approvedIds(g, status).filter((id) => !covered.has(id))
 }
@@ -52,10 +53,10 @@ const NOT_READY = 'Not ready: a talk is still pending or maybe'
 // Whether this speaker can get an email under `rule`, and which talks it covers. `history` is this speaker's
 // emails (only sent ones, manual included, count). `followUp` is the explicit one-speaker send: for acceptance it
 // covers only the talks needing a follow-up, and for any template it allows a resend of the same template.
-// `speakerKeys` (every speaker's key) lets the result flag co-speakers who are also speakers.
+// `speakerKeys` is every speaker's key, needed to flag co-speakers who are also speakers.
 export function eligibility(
   rule: RecipientRule, g: SpeakerGroup, status: (id: string) => Status, history: EmailDoc[],
-  opts: { followUp?: boolean; templateId?: string | null; speakerKeys?: ReadonlySet<string> },
+  opts: { speakerKeys: ReadonlySet<string>; followUp?: boolean; templateId?: string | null },
 ): Eligibility {
   const d = decision(g, status)
   const sent = history.filter(isSent)
@@ -75,7 +76,7 @@ export function eligibility(
     talkIds = g.cards.map((c) => c.id)
   }
 
-  if (isDecisionRule(rule) && sent.some((e) => e.isDecision)) {
+  if (isDecisionRule(rule) && sent.some(isDecisionEmail)) {
     // Only an acceptance can follow up an earlier decision email.
     if (!(opts.followUp && rule === 'acceptance')) return { ok: false, reason: 'Already had a decision email' }
     talkIds = needsFollowUp(g, status, history)
@@ -94,7 +95,7 @@ export function eligibility(
   const also = new Set<string>()
   for (const c of covered) {
     const e = coEmail(c)
-    if (e !== '' && e !== g.speakerKey && opts.speakerKeys?.has(e) && !also.has(e)) {
+    if (e !== '' && e !== g.speakerKey && opts.speakerKeys.has(e) && !also.has(e)) {
       also.add(e)
       flags.push(`Co-speaker ${c.coSpeaker!.firstName.trim() || e} is also a speaker`)
     }

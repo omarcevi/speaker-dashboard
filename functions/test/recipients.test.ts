@@ -21,6 +21,9 @@ function group(subs: Submission[]): SpeakerGroup {
   return groups[0]
 }
 
+// Every speaker in these tests; only Ada is a main speaker unless a test says otherwise.
+const keys: ReadonlySet<string> = new Set(['ada@example.com'])
+
 const statusOf = (m: Record<string, Status>) => (id: string): Status => m[id] ?? 'pending'
 
 function sent(over: Partial<EmailDoc>): EmailDoc {
@@ -49,8 +52,8 @@ describe('decision and eligibility', () => {
     const g = threeTalks()
     const status = statusOf({ A: 'approved', B: 'declined', C: 'pending' })
     expect(decision(g, status)).toBe('approved')
-    expect(eligibility('acceptance', g, status, [], {})).toEqual({ ok: true, talkIds: ['A'], cc: [], flags: [] })
-    expect(eligibility('decline', g, status, [], {}).ok).toBe(false)
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys })).toEqual({ ok: true, talkIds: ['A'], cc: [], flags: [] })
+    expect(eligibility('decline', g, status, [], { speakerKeys: keys }).ok).toBe(false)
   })
 
   it('pendingIsNotReady', () => {
@@ -58,10 +61,10 @@ describe('decision and eligibility', () => {
     for (const s of ['pending', 'maybe'] as const) {
       const status = statusOf({ A: 'declined', B: s, C: 'declined' })
       expect(decision(g, status)).toBe('not-ready')
-      expect(eligibility('acceptance', g, status, [], {}).ok).toBe(false)
-      expect(eligibility('decline', g, status, [], {}).ok).toBe(false)
-      expect(eligibility('approved', g, status, [], {}).ok).toBe(false)
-      expect(eligibility('anyone', g, status, [], {})).toMatchObject({ ok: true, talkIds: ['A', 'B', 'C'] })
+      expect(eligibility('acceptance', g, status, [], { speakerKeys: keys }).ok).toBe(false)
+      expect(eligibility('decline', g, status, [], { speakerKeys: keys }).ok).toBe(false)
+      expect(eligibility('approved', g, status, [], { speakerKeys: keys }).ok).toBe(false)
+      expect(eligibility('anyone', g, status, [], { speakerKeys: keys })).toMatchObject({ ok: true, talkIds: ['A', 'B', 'C'] })
     }
   })
 
@@ -69,8 +72,8 @@ describe('decision and eligibility', () => {
     const g = threeTalks()
     const status = statusOf({ A: 'declined', B: 'declined', C: 'declined' })
     expect(decision(g, status)).toBe('declined')
-    expect(eligibility('decline', g, status, [], {})).toEqual({ ok: true, talkIds: ['A', 'B', 'C'], cc: [], flags: [] })
-    expect(eligibility('acceptance', g, status, [], {}).ok).toBe(false)
+    expect(eligibility('decline', g, status, [], { speakerKeys: keys })).toEqual({ ok: true, talkIds: ['A', 'B', 'C'], cc: [], flags: [] })
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys }).ok).toBe(false)
   })
 
   it('batchSkipsAnyPriorDecision', () => {
@@ -78,16 +81,16 @@ describe('decision and eligibility', () => {
     const status = statusOf({ A: 'approved', B: 'approved', C: 'declined' })
     const blocked = { ok: false, reason: 'Already had a decision email' }
     // A sent decline (now outdated) still blocks a batch acceptance; so does a manual acceptance on another template.
-    expect(eligibility('acceptance', g, status, [declineSent(['A', 'B', 'C'])], { templateId: 't-acc' })).toEqual(blocked)
-    expect(eligibility('acceptance', g, status, [acceptanceSent(['A'], { templateId: 't-old', manual: true })], { templateId: 't-acc' }))
+    expect(eligibility('acceptance', g, status, [declineSent(['A', 'B', 'C'])], { speakerKeys: keys, templateId: 't-acc' })).toEqual(blocked)
+    expect(eligibility('acceptance', g, status, [acceptanceSent(['A'], { templateId: 't-old', manual: true })], { speakerKeys: keys, templateId: 't-acc' }))
       .toEqual(blocked)
     const allDeclined = statusOf({ A: 'declined', B: 'declined', C: 'declined' })
-    expect(eligibility('decline', g, allDeclined, [acceptanceSent(['A'])], { templateId: 't-dec' })).toEqual(blocked)
+    expect(eligibility('decline', g, allDeclined, [acceptanceSent(['A'])], { speakerKeys: keys, templateId: 't-dec' })).toEqual(blocked)
     // Emails that never went out don't count.
     const failed = acceptanceSent(['A'], { state: 'failed' })
-    expect(eligibility('acceptance', g, status, [failed], { templateId: 't-acc' })).toMatchObject({ ok: true, talkIds: ['A', 'B'] })
+    expect(eligibility('acceptance', g, status, [failed], { speakerKeys: keys, templateId: 't-acc' })).toMatchObject({ ok: true, talkIds: ['A', 'B'] })
     // A non-decision email doesn't block a decision email.
-    expect(eligibility('acceptance', g, status, [sent({ talkIds: ['A'] })], { templateId: 't-acc' })).toMatchObject({ ok: true })
+    expect(eligibility('acceptance', g, status, [sent({ talkIds: ['A'] })], { speakerKeys: keys, templateId: 't-acc' })).toMatchObject({ ok: true })
   })
 
   it('followUpAfterDecline', () => {
@@ -96,7 +99,7 @@ describe('decision and eligibility', () => {
     const history = [declineSent(['A', 'B', 'C'])]
     // A decline does not cover a talk that is later approved (Ruling 1).
     expect(needsFollowUp(g, status, history)).toEqual(['A'])
-    expect(eligibility('acceptance', g, status, history, { followUp: true, templateId: 't-acc' }))
+    expect(eligibility('acceptance', g, status, history, { speakerKeys: keys, followUp: true, templateId: 't-acc' }))
       .toEqual({ ok: true, talkIds: ['A'], cc: [], flags: [] })
     // No decision email yet: nothing to follow up, the speaker belongs in a batch.
     expect(needsFollowUp(g, status, [])).toEqual([])
@@ -108,12 +111,21 @@ describe('decision and eligibility', () => {
     const status = statusOf({ A: 'approved', B: 'pending', C: 'approved' })
     const history = [acceptanceSent(['A'], { manual: true })]
     expect(needsFollowUp(g, status, history)).toEqual(['C'])
-    expect(eligibility('acceptance', g, status, history, { followUp: true, templateId: 't-acc' }))
+    expect(eligibility('acceptance', g, status, history, { speakerKeys: keys, followUp: true, templateId: 't-acc' }))
       .toMatchObject({ ok: true, talkIds: ['C'] })
     // Every approved talk covered: nothing to follow up, and a follow-up is refused.
     const covered = [...history, acceptanceSent(['C'])]
     expect(needsFollowUp(g, status, covered)).toEqual([])
-    expect(eligibility('acceptance', g, status, covered, { followUp: true, templateId: 't-acc' }).ok).toBe(false)
+    expect(eligibility('acceptance', g, status, covered, { speakerKeys: keys, followUp: true, templateId: 't-acc' }).ok).toBe(false)
+    // followUp with the decline rule is refused once any decision email went out.
+    const allDeclined = statusOf({ A: 'declined', B: 'declined', C: 'declined' })
+    expect(eligibility('decline', g, allDeclined, history, { speakerKeys: keys, followUp: true, templateId: 't-dec' }))
+      .toEqual({ ok: false, reason: 'Already had a decision email' })
+    // followUp on acceptance with no prior decision email behaves as a normal acceptance.
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys, followUp: true, templateId: 't-acc' }))
+      .toEqual(eligibility('acceptance', g, status, [], { speakerKeys: keys, templateId: 't-acc' }))
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys, followUp: true, templateId: 't-acc' }))
+      .toEqual({ ok: true, talkIds: ['A', 'C'], cc: [], flags: [] })
     // An unsent acceptance covers nothing.
     expect(needsFollowUp(g, status, [...history, acceptanceSent(['C'], { state: 'unknown' })])).toEqual(['C'])
   })
@@ -121,26 +133,26 @@ describe('decision and eligibility', () => {
   it('approvedRuleRejectsDeclined', () => {
     const g = threeTalks()
     const allDeclined = statusOf({ A: 'declined', B: 'declined', C: 'declined' })
-    expect(eligibility('approved', g, allDeclined, [], { templateId: 't-info' }).ok).toBe(false)
+    expect(eligibility('approved', g, allDeclined, [], { speakerKeys: keys, templateId: 't-info' }).ok).toBe(false)
     const status = statusOf({ A: 'declined', B: 'approved', C: 'maybe' })
-    expect(eligibility('approved', g, status, [], { templateId: 't-info' })).toEqual({ ok: true, talkIds: ['B'], cc: [], flags: [] })
+    expect(eligibility('approved', g, status, [], { speakerKeys: keys, templateId: 't-info' })).toEqual({ ok: true, talkIds: ['B'], cc: [], flags: [] })
   })
 
   it('sameTemplateNotTwice', () => {
     const g = threeTalks()
     const status = statusOf({ A: 'approved' })
     const history = [sent({ templateId: 't-info', rule: 'approved', talkIds: ['A'] })]
-    expect(eligibility('approved', g, status, history, { templateId: 't-info' })).toEqual({ ok: false, reason: 'Already sent this template' })
-    expect(eligibility('anyone', g, status, history, { templateId: 't-info' })).toEqual({ ok: false, reason: 'Already sent this template' })
+    expect(eligibility('approved', g, status, history, { speakerKeys: keys, templateId: 't-info' })).toEqual({ ok: false, reason: 'Already sent this template' })
+    expect(eligibility('anyone', g, status, history, { speakerKeys: keys, templateId: 't-info' })).toEqual({ ok: false, reason: 'Already sent this template' })
     // A manual "already emailed" entry counts too.
-    expect(eligibility('anyone', g, status, [sent({ templateId: 't-info', manual: true })], { templateId: 't-info' }).ok).toBe(false)
+    expect(eligibility('anyone', g, status, [sent({ templateId: 't-info', manual: true })], { speakerKeys: keys, templateId: 't-info' }).ok).toBe(false)
     // Explicit per-speaker resend, another template, or an unsent email: allowed.
-    expect(eligibility('approved', g, status, history, { templateId: 't-info', followUp: true })).toMatchObject({ ok: true })
-    expect(eligibility('approved', g, status, history, { templateId: 't-other2' })).toMatchObject({ ok: true })
-    expect(eligibility('approved', g, status, [sent({ templateId: 't-info', state: 'cancelled' })], { templateId: 't-info' }))
+    expect(eligibility('approved', g, status, history, { speakerKeys: keys, templateId: 't-info', followUp: true })).toMatchObject({ ok: true })
+    expect(eligibility('approved', g, status, history, { speakerKeys: keys, templateId: 't-other2' })).toMatchObject({ ok: true })
+    expect(eligibility('approved', g, status, [sent({ templateId: 't-info', state: 'cancelled' })], { speakerKeys: keys, templateId: 't-info' }))
       .toMatchObject({ ok: true })
     // No template (a one-off email) never matches.
-    expect(eligibility('anyone', g, status, [sent({ templateId: null })], { templateId: null })).toMatchObject({ ok: true })
+    expect(eligibility('anyone', g, status, [sent({ templateId: null })], { speakerKeys: keys, templateId: null })).toMatchObject({ ok: true })
   })
 
   it('ccExcludesSelfAndDupes', () => {
@@ -153,8 +165,8 @@ describe('decision and eligibility', () => {
     ])
     const status = statusOf({ A: 'approved', B: 'approved', C: 'approved', D: 'approved', E: 'declined' })
     // E is not covered by the acceptance, so its co-speaker is not copied.
-    expect(eligibility('acceptance', g, status, [], {})).toMatchObject({ ok: true, talkIds: ['A', 'B', 'C', 'D'], cc: ['bea@example.com'] })
-    expect(eligibility('anyone', g, status, [], {})).toMatchObject({ cc: ['bea@example.com', 'cem@example.com'] })
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys })).toMatchObject({ ok: true, talkIds: ['A', 'B', 'C', 'D'], cc: ['bea@example.com'] })
+    expect(eligibility('anyone', g, status, [], { speakerKeys: keys })).toMatchObject({ cc: ['bea@example.com', 'cem@example.com'] })
   })
 
   it('flagsCoSpeakerEdgeCases', () => {
@@ -168,11 +180,11 @@ describe('decision and eligibility', () => {
       ok: true, talkIds: ['A'], cc: ['ana@example.com'],
       flags: ['Co-speaker Ana is also a speaker', 'Co-speaker on a declined talk is not notified'],
     })
-    // Without the list of speakers, only the declined-talk flag can be raised.
-    expect(eligibility('acceptance', g, status, [], {})).toMatchObject({ flags: ['Co-speaker on a declined talk is not notified'] })
+    // A co-speaker who isn't a main speaker anywhere raises only the declined-talk flag.
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys })).toMatchObject({ flags: ['Co-speaker on a declined talk is not notified'] })
     // A declined talk without a co-speaker raises nothing.
     const solo = threeTalks()
-    expect(eligibility('acceptance', solo, statusOf({ A: 'approved', B: 'declined' }), [], {})).toMatchObject({ flags: [] })
+    expect(eligibility('acceptance', solo, statusOf({ A: 'approved', B: 'declined' }), [], { speakerKeys: keys })).toMatchObject({ flags: [] })
   })
 
   it('removedAndNoSessionIgnored', () => {
@@ -195,7 +207,7 @@ describe('decision and eligibility', () => {
     // The removed talk's decline and the pending no-session row don't hold up readiness.
     const status = statusOf({ A: 'approved', B: 'approved', R: 'declined' })
     expect(decision(g, status)).toBe('approved')
-    expect(eligibility('acceptance', g, status, [], {})).toEqual({ ok: true, talkIds: ['A', 'B'], cc: [], flags: [] })
+    expect(eligibility('acceptance', g, status, [], { speakerKeys: keys })).toEqual({ ok: true, talkIds: ['A', 'B'], cc: [], flags: [] })
   })
 
   it('fillInValuesFormat', () => {
