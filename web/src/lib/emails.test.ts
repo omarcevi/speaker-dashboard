@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
-  ago, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
+  ago, bounceSummary, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
   emailTitle, historyChipLabel, historyByLine, speakerHistory, emailedLine, istanbulTime,
 } from './emails.ts'
@@ -270,5 +270,16 @@ describe('talk page history helpers', () => {
   it('reads a time of day in Istanbul', () => {
     expect(istanbulTime(Date.UTC(2026, 11, 5, 6, 0))).toBe('09:00')
     expect(istanbulTime(Date.UTC(2026, 11, 5, 21, 30))).toBe('00:30')
+  })
+})
+
+describe('bounceSummary', () => {
+  it('keeps the first non-empty lines and drops blanks', () => {
+    expect(bounceSummary('\n  Address not found \n\n550 No such user\n')).toBe('Address not found\n550 No such user')
+  })
+  it('caps long text with an ellipsis', () => {
+    const out = bounceSummary('x'.repeat(500))
+    expect(out.length).toBe(300)
+    expect(out.endsWith('…')).toBe(true)
   })
 })

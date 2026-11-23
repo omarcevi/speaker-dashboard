@@ -99,7 +99,7 @@ function EventForm({ initial }: { initial: EventField[] }) {
               </div>
             )}
             {admin && (
-              <form className="event-rows" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--rule)' }}
+              <form className="event-rows add-row" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--rule)' }}
                 onSubmit={(e) => { e.preventDefault(); add() }}>
                 <input className="input" value={label} placeholder="New setting, e.g. Wi-Fi password" aria-label="New setting label"
                   aria-describedby="new-key-error" disabled={full} onChange={(e) => setLabel(e.target.value)} />

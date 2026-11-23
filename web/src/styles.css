@@ -489,6 +489,7 @@ tr.off .cell-main { color: var(--muted); }
 .reply .row-end { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 12px; }
 
 .event-rows { display: grid; grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.4fr) 36px; gap: 8px; align-items: center; }
+.event-rows.add-row { grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.4fr) auto; }
 .event-rows .head { font-size: 12px; color: var(--muted); }
 .event-rows code { font-size: 12px; color: var(--muted); }
 
@@ -499,6 +500,7 @@ tr.off .cell-main { color: var(--muted); }
 @media (max-width: 720px) {
   .preview-grid { grid-template-columns: minmax(0, 1fr); }
   .event-rows { grid-template-columns: minmax(0, 1fr) 36px; }
+  .event-rows.add-row { grid-template-columns: minmax(0, 1fr) auto; }
   .event-rows .head, .event-rows code { display: none; }
   .msg-b, .msg .att-row, .quoted, .quoted-btn { margin-left: 0; padding-left: 16px; }
   .quoted { margin-left: 16px; }

@@ -6,7 +6,7 @@ import { useData } from '../data/DataProvider.tsx'
 import { emailAttachment, queueEmails } from '../data/mailActions.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { db } from '../firebase.ts'
-import { displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
+import { bounceSummary, displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
 import { initials } from '../lib/initials.ts'
 import { IconDownload } from './Icons.tsx'
 
@@ -95,7 +95,7 @@ function Ours({ email }: { email: Email }) {
   )
 }
 
-function Received({ threadId, msg }: { threadId: string; msg: Message }) {
+function Received({ threadId, msg, reason }: { threadId: string; msg: Message; reason: string | null }) {
   const when = shortDateTime(msg.at.toMillis())
   if (msg.kind === 'bounce') {
     return (
@@ -104,7 +104,7 @@ function Received({ threadId, msg }: { threadId: string; msg: Message }) {
           <span className="avatar sm" aria-hidden="true">!</span>
           <div className="grow"><b>Not delivered</b><span className="to">{displayName(msg.from)} · {when}</span></div>
         </div>
-        <div className="msg-b"><Text text={msg.text} /></div>
+        <div className="msg-b"><Text text={bounceSummary(reason ?? msg.text)} /></div>
         {msg.truncated && <p className="note">Shortened: the full message is in Gmail</p>}
       </article>
     )
@@ -225,6 +225,7 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
   const speakerKey = thread?.speakerKey ?? root?.speakerKey ?? ''
   const g = byKey.get(speakerKey)
   const speakerName = g ? `${g.name.first} ${g.name.last}`.trim() : root?.to ?? ''
+  const bounceReason = ours.find((e) => e.bounce !== null)?.bounce?.reason.trim() || null
   const bounced = ours.some((e) => e.bounce !== null) || (messages ?? []).some((m) => m.kind === 'bounce')
 
   // Keep Tab inside the dialog.
@@ -256,7 +257,7 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
         <div className="sheet-body">
           {loadError && <div className="banner" role="alert" style={{ margin: 0 }}>{loadError}</div>}
           {items.map((it) =>
-            it.kind === 'ours' ? <Ours key={`e-${it.email.id}`} email={it.email} /> : <Received key={`m-${it.msg.id}`} threadId={threadId} msg={it.msg} />)}
+            it.kind === 'ours' ? <Ours key={`e-${it.email.id}`} email={it.email} /> : <Received key={`m-${it.msg.id}`} threadId={threadId} msg={it.msg} reason={bounceReason} />)}
           {messages === null && !loadError && <p className="muted">Loading replies…</p>}
         </div>
         {admin && !bounced && speakerKey && <ReplyBox threadId={threadId} speakerKey={speakerKey} firstName={g?.name.first ?? ''} />}

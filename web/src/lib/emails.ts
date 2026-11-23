@@ -238,3 +238,9 @@ export function unknownFillIns(t: { subject: string; body: string }, fields: Eve
   const known = new Set<string>([...SPEAKER_FILL_INS, ...fields.map((f) => f.key)])
   return fillInsIn(`${t.subject}\n${t.body}`).filter((n) => !known.has(n))
 }
+
+/** First non-empty lines of a bounce notice, capped, for showing why a message was not delivered. */
+export function bounceSummary(text: string, max = 300): string {
+  const out = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '').slice(0, 4).join('\n')
+  return out.length > max ? `${out.slice(0, max - 1).trimEnd()}…` : out
+}
