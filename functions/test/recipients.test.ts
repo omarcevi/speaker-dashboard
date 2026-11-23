@@ -226,3 +226,12 @@ describe('decision and eligibility', () => {
     expect(fillInValues(g, [], []).coSpeakerNames).toBe('')
   })
 })
+
+describe('eligibility without an email address', () => {
+  it('refuses a speaker with no email address, under every rule', () => {
+    const g = group([sub({ id: 'n1', email: '  ', speakerKey: 'no-email:row-7' })])
+    for (const rule of ['acceptance', 'decline', 'approved', 'anyone'] as const) {
+      expect(eligibility(rule, g, statusOf({ n1: 'approved' }), [], { speakerKeys: keys })).toEqual({ ok: false, reason: 'No email address' })
+    }
+  })
+})

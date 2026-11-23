@@ -69,6 +69,7 @@ export function eligibility(
   rule: RecipientRule, g: SpeakerGroup, status: (id: string) => Status, history: EmailDoc[],
   opts: { speakerKeys: ReadonlySet<string>; followUp?: boolean; templateId?: string | null },
 ): Eligibility {
+  if (g.email.trim() === '') return { ok: false, reason: 'No email address' }
   const d = decision(g, status)
   const sent = history.filter(isSent)
   let talkIds: string[]
