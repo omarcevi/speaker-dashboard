@@ -99,7 +99,7 @@ tr.off .cell-main { color: var(--muted); }
 .msg.ours { background: var(--raised); border: 1px solid var(--rule); }
 .msg.bounce { background: var(--surface); border: 1px dashed var(--text); }
 .quoted-btn { margin: 0 16px 14px 58px; height: 24px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--border); background: none; font-size: 12px; color: var(--muted); cursor: pointer; }
-.quoted { margin: 0 16px 14px 58px; padding-left: 12px; border-left: 2px solid var(--border); color: var(--muted); white-space: pre-wrap; font-size: 13px; }
+.quoted { margin: 0 16px 14px 58px; padding: 10px 12px; background: var(--raised); border-radius: var(--r-chip); color: var(--muted); white-space: pre-wrap; font-size: 13px; }
 .reply { background: var(--surface); border-top: 1px solid var(--border); padding: 14px 24px 18px; }
 .reply textarea { width: 100%; min-height: 88px; resize: vertical; border: 1px solid var(--control); border-radius: var(--r-inner); padding: 10px 12px; line-height: 20px; font-family: var(--font); }
 .reply .row-end { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 12px; }
