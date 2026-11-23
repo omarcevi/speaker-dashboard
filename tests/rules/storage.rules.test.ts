@@ -16,7 +16,7 @@ beforeAll(async () => {
   });
   await testEnv.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore();
-    for (const [uid, role] of [['mem1', 'member'], ['adm1', 'admin'], ['wait1', 'waiting']]) {
+    for (const [uid, role] of [['mem1', 'member'], ['adm1', 'admin'], ['wait1', 'waiting'], ['rem1', 'removed']]) {
       await setDoc(doc(db, `users/${uid}`), {
         email: `${uid}@example.com`, name: uid, photoURL: '', role, createdAt: new Date(),
       });
@@ -57,6 +57,7 @@ describe('email attachment rules', () => {
   });
   it('denies waiting and signed-out reads', async () => {
     await assertFails(getBytes(att(as('wait1'))));
+    await assertFails(getBytes(att(as('rem1'))));
     await assertFails(getBytes(att(signedOut())));
   });
   it('lets an admin upload under 20 MB', async () => {
@@ -68,10 +69,14 @@ describe('email attachment rules', () => {
   it('denies member, waiting and signed-out uploads', async () => {
     await assertFails(uploadBytes(att(as('mem1'), 'c.pdf'), new Uint8Array([1])));
     await assertFails(uploadBytes(att(as('wait1'), 'c.pdf'), new Uint8Array([1])));
+    await assertFails(uploadBytes(att(as('rem1'), 'c.pdf'), new Uint8Array([1])));
     await assertFails(uploadBytes(att(signedOut(), 'c.pdf'), new Uint8Array([1])));
   });
   it('lets only an admin delete', async () => {
     await assertFails(deleteObject(att(as('mem1'))));
+    await assertFails(deleteObject(att(as('wait1'))));
+    await assertFails(deleteObject(att(as('rem1'))));
+    await assertFails(deleteObject(att(signedOut())));
     await assertSucceeds(deleteObject(att(as('adm1'))));
   });
 });

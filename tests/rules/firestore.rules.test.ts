@@ -336,6 +336,12 @@ describe('templates', () => {
       await assertFails(setDoc(doc(as(uid), 'templates/t2'), tpl({ updatedBy: uid, updatedByName: NAMES[uid] })));
     });
   }
+  for (const uid of ['wait1', 'rem1']) {
+    it(`${uid} cannot update or delete the existing template t1`, async () => {
+      await assertFails(setDoc(doc(as(uid), 'templates/t1'), tpl({ updatedBy: uid, updatedByName: NAMES[uid] })));
+      await assertFails(deleteDoc(doc(as(uid), 'templates/t1')));
+    });
+  }
   it('signed out cannot write a template', async () => {
     await assertFails(setDoc(doc(testEnv.unauthenticatedContext().firestore(), 'templates/t2'), tpl()));
   });
