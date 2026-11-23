@@ -11,6 +11,7 @@ import ListPage from './pages/ListPage.tsx'
 import LogisticsPage from './pages/LogisticsPage.tsx'
 import MeetingPage from './pages/MeetingPage.tsx'
 import TopicMapPage from './pages/TopicMapPage.tsx'
+import SendPage from './pages/SendPage.tsx'
 import SignInPage from './pages/SignInPage.tsx'
 import TeamPage from './pages/TeamPage.tsx'
 import TemplateEditPage from './pages/TemplateEditPage.tsx'
@@ -53,6 +54,8 @@ function Shell() {
           <Route path="/emails/templates" element={<TemplatesPage />} />
           <Route path="/emails/templates/new" element={<TemplateEditPage />} />
           <Route path="/emails/templates/:id" element={<TemplateEditPage />} />
+          <Route path="/emails/templates/:id/send" element={<SendPage />} />
+          <Route path="/emails/send" element={<SendPage />} />
           <Route path="/emails/event" element={<EventSettingsPage />} />
           <Route path="/team" element={me?.role === 'admin' ? <TeamPage /> : <Navigate to="/" replace />} />
           <Route path="/import" element={me?.role === 'admin' ? <ImportPage /> : <Navigate to="/" replace />} />

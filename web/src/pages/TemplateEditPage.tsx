@@ -5,11 +5,12 @@ import { fillInValues, type SpeakerGroup } from '../../../functions/src/email/re
 import type { EmailTemplate, EventField, RecipientRule, TemplateAttachment } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { IconLeft } from '../components/Icons.tsx'
+import Marked from '../components/Marked.tsx'
 import { newTemplateId, saveTemplate, uploadTemplateAttachment, type TemplateInput } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
 import { useSpeakers, type Speakers } from '../data/useSpeakers.ts'
 import {
-  emptyEventFillIns, formatBytes, MAX_ATTACHMENT_BYTES, previewSegments, RULE_ORDER, RULES, unknownFillIns,
+  emptyEventFillIns, formatBytes, MAX_ATTACHMENT_BYTES, RULE_ORDER, RULES, unknownFillIns,
 } from '../lib/emails.ts'
 import { formatWhen } from '../lib/syncStatus.ts'
 
@@ -28,16 +29,6 @@ function talksFor(rule: RecipientRule, g: SpeakerGroup, sp: Speakers): string[] 
   return approved.length ? approved : all
 }
 
-function Marked({ text, values }: { text: string; values: Record<string, string> }) {
-  return (
-    <>
-      {previewSegments(text, values).map((s, i) =>
-        s.kind === 'text' ? <span key={i}>{s.text}</span>
-          : s.kind === 'fill' ? <span key={i} className="fill">{s.text}</span>
-            : <span key={i} className="fill bad" title={s.why === 'unknown' ? 'Unknown fill-in' : 'Empty for this speaker'}>{s.text}</span>)}
-    </>
-  )
-}
 function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fields: EventField[] }) {
   const sp = useSpeakers()
   // Speakers this template is for (or already went to); anyone if nobody fits yet.

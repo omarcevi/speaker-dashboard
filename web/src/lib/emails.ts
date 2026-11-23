@@ -5,7 +5,7 @@ import { formatWhen } from './syncStatus.ts'
 // Event times are Istanbul time (UTC+3, no DST) whatever the browser's zone.
 const ZONE = 'Europe/Istanbul'
 
-const shortDate = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: ZONE })
+export const shortDate = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: ZONE })
 export const shortDateTime = (ms: number) =>
   `${shortDate(ms)}, ${new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: ZONE })}`
 
