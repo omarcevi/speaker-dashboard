@@ -14,6 +14,7 @@ const ID = /^[A-Za-z0-9_-]{1,200}$/
 const CAP = { text: 200_000, quoted: 100_000, subject: 1_000, addresses: 100, attachments: 50 }
 // Backstop for non-ASCII bodies, where the code-point caps alone can still exceed 1 MiB (up to 4 bytes each).
 const MAX_BODY_BYTES = 800_000
+const MAX_NEW_PER_POLL = 8
 
 export interface PollOpts { sender: string; now: number }
 
@@ -101,17 +102,22 @@ async function pollThread(
 
     const seen = new Set(t.seenIds)
     const stored: ParsedMessage[] = []
+    const fresh: typeof fetched = []
     for (const m of fetched) {
       if (!m.id || !ID.test(m.id)) continue
-      if (ours.has(m.id)) {
-        seen.add(m.id)
-        continue
-      }
+      if (ours.has(m.id)) seen.add(m.id)
+      else fresh.push(m)
+    }
+    // Ruling 12: at most 8 new messages per thread per poll, oldest first, so one commit stays under Firestore's 10 MiB
+    // limit; the rest stay out of seenIds and are read next poll.
+    const internalMs = (m: (typeof fetched)[number]) => Number(m.internalDate) || 0
+    for (const m of fresh.sort((a, b) => internalMs(a) - internalMs(b)).slice(0, MAX_NEW_PER_POLL)) {
+      const id = m.id!
       const p = parseMessage(m, opts.sender)
       const { atMs, rfcMessageId: _rfc, bounceReason: _reason, ...rest } = p
       const doc: ReceivedMessage = { ...capMessage(rest), at: Timestamp.fromMillis(atMs) }
-      tx.set(threadRef.collection('messages').doc(m.id), doc)
-      seen.add(m.id)
+      tx.set(threadRef.collection('messages').doc(id), doc)
+      seen.add(id)
       stored.push({ ...p, text: doc.text })
     }
 

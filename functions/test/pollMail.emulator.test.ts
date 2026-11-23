@@ -228,6 +228,28 @@ describe('pollMail', () => {
     expect((await threadDoc('th-1')).seenIds.sort()).toEqual(['g-r1', 'g-sent-1'])
   })
 
+  it('at most 8 new messages per thread per poll, oldest first', async () => {
+    // Added newest first, so the order Gmail lists them in doesn't decide which go first.
+    for (let i = 10; i >= 1; i--) {
+      gmail.addReply('th-1', textMessage(`g-r${i}`, 'th-1', { from: ADA, text: `Reply ${i}`, at: T0 + i * MIN }))
+    }
+    expect(await poll(T0 + HOUR)).toEqual({ threads: 1, replies: 8, bounces: 0 })
+    const first = Object.keys(await messages('th-1')).sort()
+    expect(first).toEqual(['g-r1', 'g-r2', 'g-r3', 'g-r4', 'g-r5', 'g-r6', 'g-r7', 'g-r8'])
+    expect((await threadDoc('th-1')).seenIds).not.toContain('g-r9')
+    expect((await email('e1')).replyCount).toBe(8)
+
+    expect(await poll(T0 + 2 * HOUR)).toEqual({ threads: 1, replies: 2, bounces: 0 })
+    expect(Object.keys(await messages('th-1'))).toHaveLength(10)
+    const e = await email('e1')
+    expect(e.replyCount).toBe(10)
+    expect(e.lastReplyAt!.toMillis()).toBe(T0 + 10 * MIN)
+    expect((await threadDoc('th-1')).lastSnippet).toBe('Reply 10')
+
+    expect(await poll(T0 + 3 * HOUR)).toEqual({ threads: 1, replies: 0, bounces: 0 })
+    expect((await email('e1')).replyCount).toBe(10)
+  })
+
   it('a huge reply is stored truncated and does not block the thread', async () => {
     const huge = 'x'.repeat(2 * 1024 * 1024)
     gmail.addReply('th-1', textMessage('g-big', 'th-1', { from: ADA, text: huge, at: T0 + HOUR }))
