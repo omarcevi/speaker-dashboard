@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto'
 import { Timestamp, type DocumentReference, type Firestore } from 'firebase-admin/firestore'
 import type { EmailDoc, EmailTemplate, RecipientRule, ThreadDoc } from '../model.js'
-import { compose, inFlightConflict, QueueRefused, replySubject } from './compose.js'
+import { compose, inFlightConflict, QueueRefused, replySubject, sendTimeConflict } from './compose.js'
 import { toHtml } from './fillIns.js'
 import type { GmailClient } from './gmail.js'
 import { loadSpeakers } from './loadSpeakers.js'
@@ -75,6 +75,10 @@ export async function enqueue(
       queued.push(id)
       continue
     }
+    if (input.custom && input.replyToThreadId === null && input.custom.subject.trim() === '') {
+      skipped.push({ speakerKey, reason: 'A custom email needs a subject' })
+      continue
+    }
     const g = loaded.groups.find((x) => x.speakerKey === speakerKey)
     const conflict = inFlightConflict(loaded.historyOf(speakerKey), input.templateId, rule)
     if (conflict) {
@@ -116,6 +120,8 @@ export interface ProcessOpts {
   readAttachment: (path: string) => Promise<Buffer>
   /** Pause between Gmail sends; injectable so tests don't wait. */
   sleep?: (ms: number) => Promise<void>
+  /** Real time for claimedAt and sentAt (a run can take minutes); `now` decides what is due and what is stale. */
+  clock?: () => number
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -163,16 +169,28 @@ export async function processQueue(
     .sort((a, b) => (a.get('sendAt') as Timestamp).toMillis() - (b.get('sendAt') as Timestamp).toMillis())
     .slice(0, MAX_PER_RUN)
   const sleep = opts.sleep ?? defaultSleep
+  const clock = opts.clock ?? Date.now
   let calledGmail = false
   for (const d of queued) {
-    const claimedAt = Timestamp.fromMillis(opts.now)
-    const e = await db.runTransaction(async (tx) => {
+    // The claim re-checks, against everything already sent or being sent, that this email isn't a second decision
+    // email or a repeat of a template: enqueue's checks are check-then-act, so two batches could both have queued one.
+    const claim = await db.runTransaction(async (tx) => {
       const s = await tx.get(d.ref)
       if (s.get('state') !== 'queued') return null
-      tx.update(d.ref, { state: 'sending', claimedAt })
-      return s.data() as EmailDoc
+      const doc = s.data() as EmailDoc
+      const others = (await tx.get(emails.where('speakerKey', '==', doc.speakerKey))).docs
+        .filter((o) => o.id !== d.id).map((o) => o.data() as EmailDoc)
+      const conflict = sendTimeConflict(doc, others)
+      if (conflict) {
+        tx.update(d.ref, { state: 'held', reason: conflict })
+        return 'held' as const
+      }
+      tx.update(d.ref, { state: 'sending', claimedAt: Timestamp.fromMillis(clock()) })
+      return doc
     })
-    if (!e) continue
+    if (claim === 'held') counts.held++
+    if (claim === null || claim === 'held') continue
+    const e = claim
     if (calledGmail) await sleep(PAUSE_MS)
     calledGmail = true
 
@@ -188,7 +206,7 @@ export async function processQueue(
       continue
     }
     try {
-      await recordSent(db, d.ref, e, prepared, result, opts.now)
+      await recordSent(db, d.ref, e, prepared, result, clock())
       counts.sent++
     } catch {
       // Sent but not recorded: the doc stays `sending` and becomes `unknown` on a later run.
@@ -215,6 +233,8 @@ async function writeScheduled(
     const snap = await db.doc(`templates/${e.templateId}`).get()
     if (!snap.exists) return held('Template was deleted')
     template = snap.data() as EmailTemplate
+    // Recipients were confirmed against the old rule; the admin has to look at it again.
+    if (template.rule !== e.rule) return held("Template's recipients rule changed")
     source = template
   } else if (req.custom) {
     source = req.custom
@@ -297,7 +317,7 @@ async function recordSent(
       seenIds: [...new Set([...(t?.seenIds ?? []), r.id])], lastReplyAt: t?.lastReplyAt ?? null, lastTeamAt: lastTeam,
       lastSnippet: [...(e.text ?? '')].slice(0, 140).join(''),
     }
-    tx.set(threadRef, thread)
+    tx.set(threadRef, thread, { merge: true })
   })
 }
 
@@ -318,6 +338,7 @@ export async function markEmailed(
   for (const speakerKey of [...new Set(input.speakerKeys)]) {
     const g = loaded.groups.find((x) => x.speakerKey === speakerKey)
     if (!g) continue
+    if (inFlightConflict(loaded.historyOf(speakerKey), input.templateId, template.rule)) continue
     const e = eligibility(template.rule, g, loaded.status, [], { speakerKeys, templateId: input.templateId })
     if (!e.ok) continue
     const doc: EmailDoc = {

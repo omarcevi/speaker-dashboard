@@ -58,6 +58,21 @@ export function inFlightConflict(history: EmailDoc[], templateId: string | null,
   return null
 }
 
+/** States in which Gmail has, or may have, the message. */
+const CLAIMED = new Set(['sent', 'sending', 'unknown'])
+
+/**
+ * Checked again inside the send claim, against the speaker's other emails: a second decision email, or a second copy
+ * of the same template, is held rather than sent. An explicit follow-up is exempt (it is the confirmed resend).
+ */
+export function sendTimeConflict(e: EmailDoc, others: EmailDoc[]): string | null {
+  if (e.request?.followUp) return null
+  const claimed = others.filter((o) => CLAIMED.has(o.state))
+  if (e.isDecision && claimed.some((o) => o.isDecision)) return 'Already had a decision email'
+  if (e.templateId !== null && claimed.some((o) => o.templateId === e.templateId)) return 'Already sent this template'
+  return null
+}
+
 /**
  * "Re: <subject of our first email in the thread>". Refuses a thread that isn't this speaker's, so a reply can't
  * land in someone else's conversation.

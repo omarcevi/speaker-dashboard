@@ -57,7 +57,7 @@ const plainText = (raw: string) => {
 
 let gmail: FakeGmail
 const run = (now: number) => processQueue(db, gmail, {
-  sender: SENDER, now, readAttachment: async () => Buffer.from('pdf'), sleep: async () => {},
+  sender: SENDER, now, readAttachment: async () => Buffer.from('pdf'), sleep: async () => {}, clock: () => now,
 })
 
 describe('queue', () => {
@@ -154,6 +154,38 @@ describe('queue', () => {
     expect(gmail.sent).toHaveLength(0)
   })
 
+  it('two batches that both queued a decision email send only one', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    // Simulates a concurrent enqueue that passed the check before the first doc existed.
+    const copy = { ...(await email(idFor('b1', ADA))), batchId: 'b2' }
+    await db.doc(`emails/${idFor('b2', ADA)}`).set(copy)
+    // markEmailed skips a speaker whose decision email is on its way.
+    expect(await markEmailed(db, { templateId: 't-acc', speakerKeys: [ADA], at: T0 }, admin)).toBe(0)
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 1, unknown: 0 })
+    expect(gmail.sent).toHaveLength(1)
+    expect(await email(idFor('b2', ADA))).toMatchObject({ state: 'held', reason: 'Already had a decision email' })
+  })
+
+  it('parallel runs send a queued email once', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    const results = await Promise.all([run(T0 + MIN), run(T0 + MIN)])
+    expect(results.map(r => r.sent).sort()).toEqual([0, 1])
+    expect(gmail.sent).toHaveLength(1)
+    expect((await email(idFor('b1', ADA))).state).toBe('sent')
+  }, 60_000)
+
+  it('scheduled email is held when its template is deleted or its rule changed', async () => {
+    await template('t-gone', { rule: 'approved', name: 'Gone' })
+    await enqueue(db, input({ speakerKeys: [ADA], sendAt: T0 + 60 * MIN }), admin, T0)
+    await enqueue(db, input({ batchId: 'b2', templateId: 't-gone', speakerKeys: [GRACE], sendAt: T0 + 60 * MIN }), admin, T0)
+    await template('t-acc', { rule: 'approved' })
+    await db.doc('templates/t-gone').delete()
+    expect(await run(T0 + 61 * MIN)).toEqual({ sent: 0, failed: 0, held: 2, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'held', reason: "Template's recipients rule changed" })
+    expect(await email(idFor('b2', GRACE))).toMatchObject({ state: 'held', reason: 'Template was deleted' })
+    expect(gmail.sent).toHaveLength(0)
+  })
+
   it('stale sending becomes unknown and is never sent again', async () => {
     await enqueue(db, input(), admin, T0)
     await db.doc(`emails/${idFor('b1', ADA)}`).update({ state: 'sending', claimedAt: Timestamp.fromMillis(T0 - 11 * MIN) })
@@ -221,6 +253,14 @@ describe('queue', () => {
     expect(r.queued).toEqual([])
     expect(r.skipped.map(s => s.reason)).toEqual(['Already had a decision email', 'Already had a decision email'])
     expect(gmail.sent).toHaveLength(0)
+  })
+
+  it('custom email needs a subject unless it is a reply', async () => {
+    const r = await enqueue(db, input({ templateId: null, custom: { subject: ' ', body: 'Hi {{firstName}}' } }), admin, T0)
+    expect(r.queued).toEqual([])
+    expect(r.skipped).toEqual([
+      { speakerKey: ADA, reason: 'A custom email needs a subject' }, { speakerKey: GRACE, reason: 'A custom email needs a subject' },
+    ])
   })
 
   it('reply goes to the same thread', async () => {
