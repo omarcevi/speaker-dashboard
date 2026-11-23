@@ -95,6 +95,9 @@ export interface EmailDoc {
   replyToThreadId: string | null; gmailMessageId: string | null; threadId: string | null; rfcMessageId: string | null;
   claimedAt: Ts | null; sentAt: Ts | null; bounce: { reason: string; at: Ts } | null; replyCount: number;
   lastReplyAt: Ts | null; by: string; byName: string; createdAt: Ts;
+  // What a scheduled email is written from at send time: the follow-up and CC choices, and a custom email's source
+  // (template emails re-read their template). Absent on manual entries.
+  request?: { followUp: boolean; includeCc: boolean; custom: { subject: string; body: string } | null };
 }
 // threads/{threadId}. lastTeamAt = latest of our sends and `team` messages; lastSnippet = first 140 chars of the newest message's text.
 export interface ThreadDoc {

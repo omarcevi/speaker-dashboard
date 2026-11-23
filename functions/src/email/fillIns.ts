@@ -31,7 +31,8 @@ function linkify(text: string): string {
   return out + escapeHtml(text.slice(last))
 }
 
-const toHtml = (text: string) =>
+// The HTML part for a plain-text email body.
+export const toHtml = (text: string) =>
   text.replace(/\r\n?/g, '\n').trim().split(/\n[ \t]*\n+/)
     .filter((p) => p.trim() !== '')
     .map((p) => `<p>${linkify(p).replace(/\n/g, '<br>')}</p>`).join('')
