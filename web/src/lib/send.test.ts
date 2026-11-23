@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Status } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
-import { blockedReason, canSend, istanbulDate, nameList, prepare, recipientRows, visibleSelection, type Judge } from './send.ts'
+import { blockedReason, canSend, istanbulDate, nameList, prepare, recipientRows, untickedExcept, visibleSelection, type Judge } from './send.ts'
 import { fakeSub } from './testing.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
@@ -86,6 +86,19 @@ describe('visibleSelection', () => {
   it('counts ticked rows a filter hides and leaves them out', () => {
     expect(visibleSelection(rows, new Set(), { decision: 'declined', hideAlready: false })).toEqual({ selected: [], hidden: 2 })
     expect(visibleSelection(rows, new Set(['ada@example.com']), { decision: 'not-ready', hideAlready: true })).toEqual({ selected: [], hidden: 1 })
+  })
+})
+
+describe('untickedExcept', () => {
+  it('starts a batch with only the chosen speaker ticked, everyone else listed but unticked', () => {
+    const rows = recipientRows('acceptance', 'acc', groups, judge())
+    const unticked = untickedExcept(groups.map((g) => g.speakerKey), 'dee@example.com')
+    expect(unticked.has('dee@example.com')).toBe(false)
+    expect(unticked.has('ada@example.com')).toBe(true)
+    expect(visibleSelection(rows, unticked, { decision: 'all', hideAlready: false })).toEqual({ selected: ['dee@example.com'], hidden: 0 })
+  })
+  it('ticks everyone when no speaker was chosen', () => {
+    expect(untickedExcept(groups.map((g) => g.speakerKey), null).size).toBe(0)
   })
 })
 

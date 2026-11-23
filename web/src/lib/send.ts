@@ -64,6 +64,11 @@ export function visibleSelection(rows: RecipientRow[], unticked: ReadonlySet<str
   return { selected, hidden: ticked.length - selected.length }
 }
 
+/** The starting unticked set: with a chosen speaker (from their Email menu), everyone else; otherwise nobody. */
+export function untickedExcept(speakerKeys: string[], only: string | null): Set<string> {
+  return only === null ? new Set() : new Set(speakerKeys.filter((k) => k !== only))
+}
+
 /** "Ada Lovelace, Grace Hopper" — at most `max` names, then "+N more". */
 export function nameList(names: string[], max = 5): string {
   const shown = names.slice(0, max).join(', ')

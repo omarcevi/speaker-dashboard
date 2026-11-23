@@ -13,7 +13,7 @@ import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
 import {
-  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, visibleSelection,
+  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, untickedExcept, visibleSelection,
   type DecisionFilter, type Judge, type Prepared, type RecipientRow, type Tab,
 } from '../lib/send.ts'
 
@@ -101,7 +101,7 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
   return { button, error, reset }
 }
 
-function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template | null; speakerKey: string | null }) {
+function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string | null }) {
   const { emails, event } = useData()
   const sp = useSpeakers()
   const fields = useMemo(() => event?.fields ?? [], [event])
@@ -117,7 +117,9 @@ function Flow({ mode, template, speakerKey }: { mode: Mode; template: Template |
   const [tab, setTab] = useState<Tab>('ready')
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all')
   const [hideAlready, setHideAlready] = useState(false)
-  const [unticked, setUnticked] = useState<Set<string>>(() => new Set())
+  // Picked from a speaker's Email menu (?speaker= on a batch): only that speaker starts ticked; the rest stay listed.
+  const [unticked, setUnticked] = useState<Set<string>>(() =>
+    untickedExcept(sp.groups.map((g) => g.speakerKey), mode === 'batch' ? only : null))
   const [picked, setPicked] = useState<string[]>(speakerKey ? [speakerKey] : [])
   const [at, setAt] = useState(0)
   const [includeCc, setIncludeCc] = useState(true)
@@ -589,5 +591,5 @@ export default function SendPage() {
   }
   const mode: Mode = custom ? 'custom' : followUp ? 'followUp' : 'batch'
   // A new visit (link followed) starts a new flow with a new batch id.
-  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} />
+  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={speaker} />
 }

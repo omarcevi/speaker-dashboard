@@ -178,9 +178,10 @@ function EmailMenu({ g, firstName }: { g: SpeakerGroup; firstName: string }) {
   }, [open])
 
   const key = encodeURIComponent(g.speakerKey)
+  // Keyboard focus leaving closes the menu; pointer dismissal is the mousedown listener (Safari doesn't focus links on click).
   return (
     <div className="menu-wrap" ref={wrap}
-      onBlur={(e) => { if (open && !wrap.current?.contains(e.relatedTarget as Node | null)) setOpen(false) }}>
+      onBlur={(e) => { if (open && e.relatedTarget && !wrap.current?.contains(e.relatedTarget)) setOpen(false) }}>
       <button ref={button} type="button" className="btn sm" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen((o) => !o)}>
         <IconMail />Email {firstName || 'speaker'}
       </button>
@@ -189,7 +190,7 @@ function EmailMenu({ g, firstName }: { g: SpeakerGroup; firstName: string }) {
           <ul className="who-list">
             {items.map(({ t, row }) => {
               if (row.tab === 'ready') {
-                return <li key={t.id}><Link to={`/emails/templates/${encodeURIComponent(t.id)}/send`}>{t.name}</Link></li>
+                return <li key={t.id}><Link to={`/emails/templates/${encodeURIComponent(t.id)}/send?speaker=${key}`}>{t.name}</Link></li>
               }
               if (row.tab === 'follow') {
                 return (

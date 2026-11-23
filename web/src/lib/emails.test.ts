@@ -113,6 +113,13 @@ describe('lastDecisionEmail', () => {
     expect(lastDecisionEmail([old, other, recent, pending])).toBe(recent)
     expect(lastDecisionEmail([other, pending])).toBeUndefined()
   })
+
+  it('ranks a manual mark without sentAt by when it was made', () => {
+    const sent = email({ sentAt: ts(10), createdAt: ts(5) })
+    const marked = email({ manual: true, sentAt: null, createdAt: ts(20) })
+    expect(lastDecisionEmail([sent, marked])).toBe(marked)
+    expect(lastDecisionEmail([marked, sent])).toBe(marked)
+  })
 })
 
 describe('stateTone', () => {

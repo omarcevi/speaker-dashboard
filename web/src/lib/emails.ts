@@ -44,12 +44,14 @@ export function stateLabel(e: EmailDoc): string {
   }
 }
 
-/** The newest decision email that actually went out (manual included). */
+const sentOrMade = (e: EmailDoc) => (e.sentAt ?? e.createdAt).toMillis()
+
+/** The newest decision email that actually went out (manual included), by when it was sent or marked. */
 export function lastDecisionEmail<T extends EmailDoc>(history: T[]): T | undefined {
   let best: T | undefined
   for (const e of history) {
     if (!e.isDecision || e.state !== 'sent') continue
-    if (!best || (e.sentAt?.toMillis() ?? 0) > (best.sentAt?.toMillis() ?? 0)) best = e
+    if (!best || sentOrMade(e) > sentOrMade(best)) best = e
   }
   return best
 }
