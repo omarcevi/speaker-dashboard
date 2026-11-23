@@ -123,7 +123,7 @@ The server must judge readiness from the same cards the team sees.
   - `newMessageId(domain: string): string` (`<random@domain>`)
   - `GmailMessage` (the subset of `gmail_v1.Schema$Message` used: `id`, `threadId`, `labelIds`, `internalDate`, `payload`)
   - `parseMessage(m: GmailMessage, sender: string): Omit<ReceivedMessage, 'at'> & { atMs: number; rfcMessageId: string }`
-  - kind: `team` when `labelIds` has `SENT` or From address equals `sender`; `bounce` only when the payload is `multipart/report` with `report-type=delivery-status`, or From address local part is `mailer-daemon`/`postmaster` **and** a `message/delivery-status` part exists; otherwise `reply`.
+  - kind (Ruling 6, security): `team` only when `labelIds` has `SENT`; `bounce` only when the From local part is `mailer-daemon`/`postmaster` **and** there is a delivery-status report (`multipart/report; report-type=delivery-status` or a `message/delivery-status` part); otherwise `reply`.
   - bounce reason: `Diagnostic-Code` or `Status` from the delivery-status part, else the first 300 chars of text.
   - text: `text/plain` part if present, else HTML converted (block tags → newlines, `<br>` → newline, tags stripped, entities decoded, runs of 3+ newlines collapsed). Never returns markup.
   - quoted: split at Gmail's `gmail_quote` block (HTML), or the first line matching `/^On .+ wrote:$/` or `/^\d{1,2} .+ tarihinde .+ şunu yazdı:$/`, or a run of `>` lines at the end.
