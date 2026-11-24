@@ -93,8 +93,8 @@ export async function uploadTemplateAttachment(templateId: string, file: File): 
   return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
 }
 
-export async function saveEvent(fields: EventField[], signatureHtml: string, me: Actor): Promise<void> {
-  await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+export async function saveEvent(fields: EventField[], signatureHtml: string, speakerFacts: string, me: Actor): Promise<void> {
+  await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, speakerFacts, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
 }
 
 export async function saveStages(stages: Stage[], me: Actor): Promise<void> {
