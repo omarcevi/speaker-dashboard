@@ -87,7 +87,7 @@ function Ours({ email }: { email: Email }) {
         {sent ? <span className="muted" style={{ fontSize: 12 }}>{shortDateTime(at)}</span> : <StateChip email={email} />}
       </div>
       <div className="msg-b">
-        {email.html ? <EmailFrame html={email.html} title={`Email to ${email.to}`} />
+        {email.html ? <EmailFrame html={email.html} title={`Email to ${email.to}`} compact />
           : email.text ? <Text text={email.text} /> : <span className="muted">Written when it goes out.</span>}
       </div>
       {email.attachments.length > 0 && (
