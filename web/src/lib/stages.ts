@@ -232,9 +232,9 @@ export function stagesProblem(stages: Stage[], templates: readonly { id: string;
   return stages.length > MAX_STAGES ? `At most ${MAX_STAGES} stages` : null
 }
 
-/** The send flow for `templateId` with these speakers ticked. */
+/** The send flow for `templateId` with these speakers ticked; `from=stages` makes its last step offer the way back. */
 export function sendLink(templateId: string, speakerKeys: string[]): string {
-  const q = new URLSearchParams(speakerKeys.map((k) => ['speaker', k]))
+  const q = new URLSearchParams([...speakerKeys.map((k) => ['speaker', k]), ['from', 'stages']])
   return `/emails/templates/${encodeURIComponent(templateId)}/send?${q.toString()}`
 }
 

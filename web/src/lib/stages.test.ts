@@ -305,8 +305,8 @@ describe('manage stages helpers', () => {
 })
 
 describe('cell actions', () => {
-  it('sendLink puts every speaker in the query', () => {
-    expect(sendLink('t 1', ['a+b@example.com', 'c@example.com'])).toBe('/emails/templates/t%201/send?speaker=a%2Bb%40example.com&speaker=c%40example.com')
+  it('sendLink puts every speaker in the query and says it came from Stages', () => {
+    expect(sendLink('t 1', ['a+b@example.com', 'c@example.com'])).toBe('/emails/templates/t%201/send?speaker=a%2Bb%40example.com&speaker=c%40example.com&from=stages')
   })
   it('markNote says what was marked', () => {
     expect(markNote(1, 'Ada', 'Event info', null)).toBe('Marked Event info as already sent for Ada.')

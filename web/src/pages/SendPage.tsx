@@ -106,7 +106,9 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
   return { button, error, reset }
 }
 
-function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string[] }) {
+function Flow({ mode, template, speakerKey, only, fromStages }: {
+  mode: Mode; template: Template | null; speakerKey: string | null; only: string[]; fromStages: boolean
+}) {
   const { emails, event, signatureHtml } = useData()
   const sp = useSpeakers()
   const fields = useMemo(() => event?.fields ?? [], [event])
@@ -575,7 +577,9 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
       </section>
       <div className="actionbar" style={{ maxWidth: 640 }}>
         <span className="grow" />
-        {!custom && <Link className="btn" to="/emails/templates">Back to templates</Link>}
+        {fromStages
+          ? <Link className="btn" to="/emails/stages">Back to Stages</Link>
+          : !custom && <Link className="btn" to="/emails/templates">Back to templates</Link>}
         <Link className="btn primary" to="/emails">Open Emails</Link>
       </div>
     </>
@@ -608,5 +612,6 @@ export default function SendPage() {
   }
   const mode: Mode = custom ? 'custom' : followUp ? 'followUp' : 'batch'
   // A new visit (link followed) starts a new flow with a new batch id.
-  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={params.getAll('speaker')} />
+  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={params.getAll('speaker')}
+    fromStages={params.get('from') === 'stages'} />
 }
