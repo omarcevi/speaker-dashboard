@@ -161,10 +161,11 @@ export function stageCounts(rows: StageRow[], stageId: string): { sent: number; 
   return n
 }
 
-export function stageSummary(stage: Stage, c: { sent: number; missing: number }, today: string): string {
+export function stageSummary(stage: Stage, c: { sent: number; missing: number; follow: number }, today: string): string {
   const parts: string[] = []
   if (c.sent > 0) parts.push(`${c.sent} sent`)
   if (c.missing > 0) parts.push(`${c.missing} missing`)
+  if (c.follow > 0) parts.push(`${c.follow} ${c.follow === 1 ? 'needs' : 'need'} follow-up`)
   const future = typeof stage.dueFrom === 'string' && stage.dueFrom !== '' && today < stage.dueFrom
   if (c.missing === 0 && future) parts.push(`due ${dueLabel(stage.dueFrom!)}`)
   if (parts.length > 0) return parts.join(' · ')

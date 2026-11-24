@@ -192,13 +192,20 @@ describe('rows and counts', () => {
   })
   it('stageSummary', () => {
     const f = '2026-12-11'
-    expect(stageSummary(pres, { sent: 20, missing: 2 }, today)).toBe('20 sent · 2 missing')
-    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 0, missing: 0 }, today)).toBe('due 11 Dec')
-    expect(stageSummary({ ...pres, dueFrom: null }, { sent: 0, missing: 0 }, today)).toBe('no due date')
-    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 3, missing: 0 }, today)).toBe('3 sent · due 11 Dec')
-    expect(stageSummary(pres, { sent: 3, missing: 0 }, today)).toBe('3 sent')
-    expect(stageSummary(pres, { sent: 0, missing: 4 }, today)).toBe('4 missing')
-    expect(stageSummary(pres, { sent: 0, missing: 0 }, today)).toBe('0 sent')
+    expect(stageSummary(pres, { sent: 20, missing: 2, follow: 0 }, today)).toBe('20 sent · 2 missing')
+    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 0, missing: 0, follow: 0 }, today)).toBe('due 11 Dec')
+    expect(stageSummary({ ...pres, dueFrom: null }, { sent: 0, missing: 0, follow: 0 }, today)).toBe('no due date')
+    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 3, missing: 0, follow: 0 }, today)).toBe('3 sent · due 11 Dec')
+    expect(stageSummary(pres, { sent: 3, missing: 0, follow: 0 }, today)).toBe('3 sent')
+    expect(stageSummary(pres, { sent: 0, missing: 4, follow: 0 }, today)).toBe('4 missing')
+    expect(stageSummary(pres, { sent: 0, missing: 0, follow: 0 }, today)).toBe('0 sent')
+  })
+  it('stageSummaryCountsFollowUps', () => {
+    expect(stageSummary(pres, { sent: 2, missing: 0, follow: 1 }, today)).toBe('2 sent · 1 needs follow-up')
+    expect(stageSummary(pres, { sent: 0, missing: 0, follow: 1 }, today)).toBe('1 needs follow-up')
+    expect(stageSummary(pres, { sent: 3, missing: 1, follow: 2 }, today)).toBe('3 sent · 1 missing · 2 need follow-up')
+    expect(stageSummary({ ...pres, dueFrom: '2026-12-11' }, { sent: 1, missing: 0, follow: 1 }, today)).toBe('1 sent · 1 needs follow-up · due 11 Dec')
+    expect(stageSummary(pres, { sent: 3, missing: 0, follow: 0 }, today)).toBe('3 sent')
   })
   it('labels and tones', () => {
     expect(dueLabel('2026-12-01')).toBe('1 Dec')
