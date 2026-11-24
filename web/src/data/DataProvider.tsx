@@ -30,6 +30,8 @@ interface DataValue {
   stages: Stage[]
   /** Per-speaker skipped / added stages, by speaker key. */
   speakerStages: Map<string, Exceptions>
+  /** The `meta/stages` listener failed: `stages` is not what is stored, so it must not be saved over. */
+  stagesFailed: boolean
   loading: boolean
   error: string | null
 }
@@ -53,6 +55,7 @@ const emptyLoaded: Loaded = {
   mailMeta: null,
   stages: [],
   speakerStages: new Map(),
+  stagesFailed: false,
   error: null,
 }
 
@@ -157,7 +160,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(doc(db, 'meta', 'stages'), (snap) => {
         setData((p) => ({ ...p, stages: readStages(snap.data()) }))
         markReady('stages')
-      }, fail('stages')),
+      }, (e) => { setData((p) => ({ ...p, stagesFailed: true })); fail('stages')(e) }),
       onSnapshot(collection(db, 'speakerStages'), (snap) => {
         const speakerStages = new Map(snap.docs.map((d) => [d.id, readExceptions(d.data())]))
         setData((p) => ({ ...p, speakerStages }))
