@@ -63,7 +63,7 @@ export async function importSent(
       const doc: EmailDoc = {
         batchId: `import_${id}`, speakerKey: g.speakerKey, to: g.email.trim(), cc: [], templateId: opts.templateId,
         templateName: template.name, rule: template.rule, isDecision: isDecisionRule(template.rule), talkIds: e.talkIds,
-        subject: p.subject, text: p.text, attachments: [], sendAt: sentAt, state: 'sent', reason: null, manual: false,
+        subject: p.subject, text: p.text, html: null, attachments: [], sendAt: sentAt, state: 'sent', reason: null, manual: false,
         replyToThreadId: null, gmailMessageId: id, threadId, rfcMessageId: p.rfcMessageId || null, claimedAt: null,
         sentAt, bounce: null, replyCount: 0, lastReplyAt: null, by: opts.actor.uid, byName: opts.actor.name,
         createdAt: Timestamp.fromMillis(opts.now ?? Date.now()),

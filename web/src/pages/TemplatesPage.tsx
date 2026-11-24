@@ -9,6 +9,7 @@ import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { ago, emptyEventFillIns, RULE_ORDER, RULES } from '../lib/emails.ts'
 import { formatWhen } from '../lib/syncStatus.ts'
+import { templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 
 type Template = EmailTemplate & { id: string }
 
@@ -38,7 +39,7 @@ function Actions({ t }: { t: Template }) {
     }
   }
   const duplicate = () => run('duplicate', () => saveTemplate(null, {
-    name: `${t.name} (copy)`, subject: t.subject, body: t.body, attachments: t.attachments, rule: t.rule,
+    name: `${t.name} (copy)`, subject: t.subject, body: t.body, html: t.html ?? null, attachments: t.attachments, rule: t.rule,
   }, { uid: me!.uid, name: me!.name }))
 
   return (
@@ -110,7 +111,8 @@ export default function TemplatesPage() {
               const mine = emails.filter((e) => e.templateId === t.id)
               const sent = mine.filter((e) => e.state === 'sent').length
               const scheduled = mine.filter((e) => e.state === 'scheduled').length
-              const empty = emptyEventFillIns(t, fields)
+              // The same input as the editor's warnings: what is sent, the message's HTML.
+              const empty = emptyEventFillIns({ subject: t.subject, body: templateHtml(t) }, fields)
               const href = `/emails/templates/${t.id}`
               const updated = t.updatedAt?.toMillis()
               return (

@@ -15,7 +15,7 @@ import { eligibility } from './recipients.js'
 export { QueueRefused } from './compose.js'
 
 export interface EnqueueInput {
-  batchId: string; templateId: string | null; custom: { subject: string; body: string } | null; speakerKeys: string[];
+  batchId: string; templateId: string | null; custom: { subject: string; body: string; html?: string | null } | null; speakerKeys: string[];
   followUp: boolean; sendAt: number | null; includeCc: boolean; replyToThreadId: string | null
 }
 export interface Actor { uid: string; name: string }
@@ -96,7 +96,7 @@ export async function enqueue(
     const doc: EmailDoc = {
       batchId: input.batchId, speakerKey, to: g!.email.trim(), cc: c.cc, templateId: input.templateId,
       templateName: template?.name ?? CUSTOM_NAME, rule, isDecision: isDecisionRule(rule), talkIds: c.talkIds,
-      subject: c.subject, text: c.text, attachments: template?.attachments ?? [],
+      subject: c.subject, text: c.text, html: c.html, attachments: template?.attachments ?? [],
       sendAt: Timestamp.fromMillis(scheduled ? input.sendAt! : now), state: scheduled ? 'scheduled' : 'queued', reason: null,
       manual: false, replyToThreadId: input.replyToThreadId, gmailMessageId: null, threadId: input.replyToThreadId,
       rfcMessageId: null, claimedAt: null, sentAt: null, bounce: null, replyCount: 0, lastReplyAt: null,
@@ -257,7 +257,7 @@ async function writeScheduled(
 ): Promise<Partial<EmailDoc>> {
   const held = (reason: string): Partial<EmailDoc> => ({ state: 'held', reason })
   const req = e.request ?? { followUp: false, includeCc: true, custom: null }
-  let source: { subject: string; body: string }
+  let source: { subject: string; body: string; html?: string | null }
   let template: EmailTemplate | null = null
   if (e.templateId !== null) {
     const snap = await db.doc(`templates/${e.templateId}`).get()
@@ -286,7 +286,7 @@ async function writeScheduled(
   })
   if (!c.ok) return held(c.reason)
   return {
-    state: 'queued', reason: null, subject: c.subject, text: c.text, talkIds: c.talkIds, cc: c.cc, to: g!.email.trim(),
+    state: 'queued', reason: null, subject: c.subject, text: c.text, html: c.html, talkIds: c.talkIds, cc: c.cc, to: g!.email.trim(),
     ...(template ? { templateName: template.name, attachments: template.attachments } : {}),
   }
 }
@@ -299,7 +299,7 @@ const attachmentAllowed = (path: string) => {
   return parts.length >= 3 && parts[0] === 'emailAttachments' && parts.every((p) => p !== '' && p !== '.' && p !== '..')
 }
 
-type Sendable = Pick<EmailDoc, 'to' | 'cc' | 'subject' | 'text' | 'templateId' | 'attachments' | 'replyToThreadId'>
+type Sendable = Pick<EmailDoc, 'to' | 'cc' | 'subject' | 'text' | 'html' | 'templateId' | 'attachments' | 'replyToThreadId'>
 
 /** Reads the attachments and reply headers and builds the message. Throws on anything that must not be sent. */
 async function prepare(e: Sendable, gmail: GmailClient, opts: Pick<ProcessOpts, 'sender' | 'readAttachment'>): Promise<Prepared> {
@@ -327,7 +327,7 @@ async function prepare(e: Sendable, gmail: GmailClient, opts: Pick<ProcessOpts, 
   }
   const messageId = newMessageId(opts.sender.split('@').at(-1) ?? '')
   const raw = buildRaw({
-    from: `${FROM_NAME} <${opts.sender}>`, to: e.to, cc: e.cc, subject: e.subject, text: e.text, html: toHtml(e.text),
+    from: `${FROM_NAME} <${opts.sender}>`, to: e.to, cc: e.cc, subject: e.subject, text: e.text, html: e.html ?? toHtml(e.text),
     attachments, inReplyTo, references, messageId,
   })
   return { raw, messageId }
@@ -411,7 +411,7 @@ export async function markEmailed(
     if (!e.ok) continue
     const doc: EmailDoc = {
       batchId, speakerKey, to: g.email.trim(), cc: [], templateId: input.templateId, templateName: template.name,
-      rule: template.rule, isDecision: isDecisionRule(template.rule), talkIds: e.talkIds, subject: null, text: null,
+      rule: template.rule, isDecision: isDecisionRule(template.rule), talkIds: e.talkIds, subject: null, text: null, html: null,
       attachments: [], sendAt: at, state: 'sent', reason: null, manual: true, replyToThreadId: null, gmailMessageId: null,
       threadId: null, rfcMessageId: null, claimedAt: null, sentAt: at, bounce: null, replyCount: 0, lastReplyAt: null,
       by: actor.uid, byName: actor.name, createdAt: Timestamp.now(),
@@ -470,7 +470,7 @@ export async function resolveUnknown(db: Firestore, id: string, to: 'sent' | 're
 }
 
 export interface TestEmailInput {
-  templateId: string | null; custom: { subject: string; body: string } | null; speakerKey: string; followUp?: boolean
+  templateId: string | null; custom: { subject: string; body: string; html?: string | null } | null; speakerKey: string; followUp?: boolean
 }
 
 /**
@@ -491,7 +491,7 @@ export async function sendTestEmail(
   })
   if (!c.ok) throw new QueueRefused(c.reason)
   const p = await prepare({
-    to, cc: [], subject: `[TEST] ${c.subject}`, text: c.text, templateId: input.templateId,
+    to, cc: [], subject: `[TEST] ${c.subject}`, text: c.text, html: c.html, templateId: input.templateId,
     attachments: template?.attachments ?? [], replyToThreadId: null,
   }, gmail, opts)
   await gmail.send(p.raw)

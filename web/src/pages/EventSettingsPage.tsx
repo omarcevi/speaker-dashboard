@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { fillInsIn, validEventKey } from '../../../functions/src/email/fillIns.ts'
 import type { EventField } from '../../../functions/src/model.ts'
+import { cleanEmailHtml, isBlankHtml, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
+import { EmailFrame } from '../components/EmailFrame.tsx'
 import EmailsTabs from '../components/EmailsTabs.tsx'
+import LazyRichEditor from '../components/LazyRichEditor.tsx'
 import { saveEvent } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
 import { eventKeyOf } from '../lib/emails.ts'
@@ -10,19 +13,21 @@ import { eventKeyOf } from '../lib/emails.ts'
 const MAX_FIELDS = 50 // the rules' cap
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-function EventForm({ initial }: { initial: EventField[] }) {
+function EventForm({ initial, initialSignature }: { initial: EventField[]; initialSignature: string }) {
   const { me } = useAuth()
   const admin = me?.role === 'admin'
   const { templates } = useData()
   const [base, setBase] = useState(initial)
   const [rows, setRows] = useState(initial)
+  const [baseSignature, setBaseSignature] = useState(initialSignature)
+  const [signature, setSignature] = useState(initialSignature)
   const [label, setLabel] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  const dirty = JSON.stringify(base) !== JSON.stringify(rows)
-  const usedBy = (key: string) => templates.filter((t) => fillInsIn(`${t.subject}\n${t.body}`).includes(key)).map((t) => t.name)
+  const dirty = JSON.stringify(base) !== JSON.stringify(rows) || baseSignature !== signature
+  const usedBy = (key: string) => templates.filter((t) => fillInsIn(`${t.subject}\n${templateHtml(t)}`).includes(key)).map((t) => t.name)
   const newKey = eventKeyOf(label)
   const keyError = label.trim() === '' ? null : newKey === '' ? 'Use letters or digits in the label.' : validEventKey(newKey, rows.map((r) => r.key))
   const full = rows.length >= MAX_FIELDS
@@ -41,9 +46,13 @@ function EventForm({ initial }: { initial: EventField[] }) {
     setError(null)
     try {
       const clean = rows.map((f) => ({ key: f.key, label: f.label.trim() || f.key, value: f.value.trim() }))
-      await saveEvent(clean, { uid: me!.uid, name: me!.name })
+      // An emptied editor leaves "<p></p>"; store it as no signature.
+      const sig = isBlankHtml(signature) ? '' : signature
+      await saveEvent(clean, sig, { uid: me!.uid, name: me!.name })
       setBase(clean)
       setRows(clean)
+      setBaseSignature(sig)
+      setSignature(sig)
       setSaved(true)
     } catch (e) {
       setError(`Couldn't save: ${errorText(e)}`)
@@ -112,6 +121,21 @@ function EventForm({ initial }: { initial: EventField[] }) {
             )}
           </div>
         </section>
+        <section className="setting">
+          <div className="about">
+            <h2>Team signature</h2>
+            <p>Added to the end of every email, replies included.</p>
+            {!admin && <p>Only admins can change it.</p>}
+          </div>
+          <div className="card pad">
+            {admin ? (
+              <LazyRichEditor value={signature} ariaLabel="Team signature" fillIns={[]}
+                onChange={(html) => { setSaved(false); setSignature(html) }} />
+            ) : isBlankHtml(signature) ? <p className="muted">No signature yet.</p> : (
+              <EmailFrame html={cleanEmailHtml(signature)} title="Team signature" />
+            )}
+          </div>
+        </section>
       </div>
     </>
   )
@@ -122,7 +146,7 @@ export default function EventSettingsPage() {
   return (
     <>
       <EmailsTabs />
-      {loading ? <p className="muted">Loading…</p> : <EventForm initial={event?.fields ?? []} />}
+      {loading ? <p className="muted">Loading…</p> : <EventForm initial={event?.fields ?? []} initialSignature={event?.signatureHtml ?? ''} />}
     </>
   )
 }

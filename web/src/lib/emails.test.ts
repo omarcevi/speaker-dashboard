@@ -11,7 +11,7 @@ const ts = (ms: number) => ({ toMillis: () => ms })
 function email(over: Partial<EmailDoc> = {}): EmailDoc {
   return {
     batchId: 'b1', speakerKey: 'ada@example.com', to: 'ada@example.com', cc: [], templateId: 't1', templateName: 'Acceptance',
-    rule: 'acceptance', isDecision: true, talkIds: [], subject: null, text: null, attachments: [], sendAt: ts(0), state: 'sent',
+    rule: 'acceptance', isDecision: true, talkIds: [], subject: null, text: null, html: null, attachments: [], sendAt: ts(0), state: 'sent',
     reason: null, manual: false, replyToThreadId: null, gmailMessageId: null, threadId: 'th1', rfcMessageId: null,
     claimedAt: null, sentAt: ts(Date.UTC(2026, 10, 20, 8, 0)), bounce: null, replyCount: 0, lastReplyAt: null,
     by: 'u', byName: 'U', createdAt: ts(0), ...over,

@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { EmailTemplate, EventSettings } from '../src/model.js'
 import { seedTemplates } from '../src/email/seedTemplates.js'
-import { fillInsIn, SPEAKER_FILL_INS } from '../src/email/fillIns.js'
+import { fillInsIn, toHtml, SPEAKER_FILL_INS } from '../src/email/fillIns.js'
 
 const db = getFirestore(initializeApp({ projectId: 'demo-cfp' }))
 const T0 = Date.UTC(2026, 10, 24, 9, 0, 0)
@@ -26,6 +26,7 @@ describe('seedTemplates', () => {
       const text = `${x.subject}\n${x.body}`
       for (const key of ['firstName', 'talkTitles', 'eventName']) expect(text).toContain(`{{${key}}}`)
       expect(x.updatedAt.toMillis()).toBe(T0)
+      expect(x.html).toBe(toHtml(x.body))
     }
     const event = (await db.doc('meta/event').get()).data() as EventSettings
     expect(event.fields).toEqual([

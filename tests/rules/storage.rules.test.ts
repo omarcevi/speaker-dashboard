@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc } from 'firebase/firestore';
-import { deleteObject, getBytes, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getBytes, getMetadata, ref, uploadBytes } from 'firebase/storage';
 
 let testEnv: RulesTestEnvironment;
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../${f}`, import.meta.url)), 'utf8');
@@ -22,6 +22,8 @@ beforeAll(async () => {
       });
     }
     await uploadBytes(ref(ctx.storage(), 'emailAttachments/t1/a.pdf'), new Uint8Array([1, 2, 3]), { contentType: 'application/pdf' });
+    await uploadBytes(ref(ctx.storage(), 'emailImages/seed.png'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
+    await uploadBytes(ref(ctx.storage(), 'emailImages/del.png'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
     await uploadBytes(ref(ctx.storage(), 'photos/x'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
   });
 });
@@ -78,5 +80,42 @@ describe('email attachment rules', () => {
     await assertFails(deleteObject(att(as('rem1'))));
     await assertFails(deleteObject(att(signedOut())));
     await assertSucceeds(deleteObject(att(as('adm1'))));
+  });
+});
+
+describe('email image rules', () => {
+  const img = (s: ReturnType<typeof as>, f = 'seed.png') => ref(s, `emailImages/${f}`);
+  const png = { contentType: 'image/png' };
+  it('lets an admin upload a small image', async () => {
+    await assertSucceeds(uploadBytes(img(as('adm1'), 'ok.png'), new Uint8Array(1024), png));
+  });
+  it('denies an admin upload that is not an image', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'page.html'), new Uint8Array(1024), { contentType: 'text/html' }));
+  });
+  it('lets an admin upload JPEG, GIF and WebP', async () => {
+    for (const [f, contentType] of [['a.jpg', 'image/jpeg'], ['a.gif', 'image/gif'], ['a.webp', 'image/webp']]) {
+      await assertSucceeds(uploadBytes(img(as('adm1'), f), new Uint8Array(1024), { contentType }));
+    }
+  });
+  it('denies an admin upload of other image types such as SVG', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'x.svg'), new Uint8Array(1024), { contentType: 'image/svg+xml' }));
+    await assertFails(uploadBytes(img(as('adm1'), 'x.heic'), new Uint8Array(1024), { contentType: 'image/heic' }));
+  });
+  it('denies an admin upload of 5 MB or more', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'big.png'), new Uint8Array(6 * 1024 * 1024), png));
+  });
+  it('denies a member upload', async () => {
+    await assertFails(uploadBytes(img(as('mem1'), 'm.png'), new Uint8Array(1024), png));
+  });
+  it('lets only an admin read, which getDownloadURL needs', async () => {
+    await assertSucceeds(getBytes(img(as('adm1'))));
+    await assertSucceeds(getMetadata(img(as('adm1'))));
+    await assertFails(getBytes(img(as('mem1'))));
+    await assertFails(getMetadata(img(as('mem1'))));
+    await assertFails(getBytes(img(testEnv.unauthenticatedContext().storage())));
+  });
+  it('lets only an admin delete', async () => {
+    await assertFails(deleteObject(img(as('mem1'), 'del.png')));
+    await assertSucceeds(deleteObject(img(as('adm1'), 'del.png')));
   });
 });

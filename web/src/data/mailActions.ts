@@ -1,7 +1,8 @@
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '../firebase.ts'
 
-export interface CustomEmail { subject: string; body: string }
+/** `html` is the message as written; leave it out to send `body` as paragraphs. */
+export interface CustomEmail { subject: string; body: string; html?: string }
 
 export interface QueueEmailsInput {
   batchId: string

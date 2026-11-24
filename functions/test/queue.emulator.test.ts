@@ -55,6 +55,16 @@ const plainText = (raw: string) => {
   return Buffer.from(m![1].replace(/\r\n/g, ''), 'base64').toString('utf8')
 }
 
+// HTML part of a message built by buildRaw.
+const htmlPart = (raw: string) => {
+  const m = /text\/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+)/.exec(rawText(raw))
+  return Buffer.from(m![1].replace(/\r\n/g, ''), 'base64').toString('utf8')
+}
+const setSignature = (signatureHtml: string) => db.doc('meta/event').set({
+  fields: [{ key: 'venue', label: 'Venue', value: 'Hall A' }], signatureHtml,
+  updatedAt: Timestamp.fromMillis(T0), updatedBy: 'adm1', updatedByName: 'Adele',
+})
+
 let gmail: FakeGmail
 const run = (now: number) => processQueue(db, gmail, {
   sender: SENDER, now, readAttachment: async () => Buffer.from('pdf'), sleep: async () => {}, clock: () => now,
@@ -129,6 +139,57 @@ describe('queue', () => {
     expect(thread).toMatchObject({ speakerKey: ADA, seenIds: ['fake-msg-1'], lastSnippet: 'Your talks:\n• Fake Engines\n\nVenue: Hall A' })
     expect(thread.firstSentAt.toMillis()).toBe(T0 + MIN)
     expect(thread.lastTeamAt!.toMillis()).toBe(T0 + MIN)
+  })
+
+  it('sendsTemplateHtmlWithSignature', async () => {
+    await template('t-acc', { html: '<p>Hi <b>{{firstName}}</b></p>' })
+    await setSignature('<p>Team</p>')
+    await talk('row-4', 4, 'amp@example.com', 'Ada & Co', 'Fake Parsers', 'approved')
+    await enqueue(db, input({ speakerKeys: ['amp@example.com'] }), admin, T0)
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 0, unknown: 0 })
+    const raw = gmail.sent[0].raw
+    expect(htmlPart(raw)).toContain('<p>Hi <b>Ada &amp; Co</b></p><br><p>Team</p>')
+    expect(plainText(raw)).toContain('Hi Ada & Co')
+    expect(plainText(raw)).toContain('Team')
+    expect((await email(idFor('b1', 'amp@example.com'))).html).toBe(htmlPart(raw))
+  })
+
+  it('legacyTemplateSendsAsHtml', async () => {
+    await template('t-acc', { body: 'Line one\n\nLine two' })
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    await run(T0 + MIN)
+    expect(htmlPart(gmail.sent[0].raw)).toContain('<p>Line one</p><p>Line two</p>')
+  })
+
+  it('scheduledRendersHtmlAtSendTime', async () => {
+    await template('t-acc', { html: '<p>Old</p>' })
+    await enqueue(db, input({ speakerKeys: [ADA], sendAt: T0 + 60 * MIN }), admin, T0)
+    await template('t-acc', { html: '<p>New</p>' })
+    await run(T0 + 61 * MIN)
+    expect(htmlPart(gmail.sent[0].raw)).toContain('<p>New</p>')
+    expect(htmlPart(gmail.sent[0].raw)).not.toContain('Old')
+  })
+
+  it('replyGetsSignature', async () => {
+    await setSignature('<p>Team</p>')
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    await run(T0)
+    await enqueue(db, input({
+      batchId: 'reply1', templateId: null, custom: { subject: '', body: 'Thanks!' }, speakerKeys: [ADA], replyToThreadId: 'fake-thread-1',
+    }), admin, T0 + MIN)
+    await run(T0 + 2 * MIN)
+    expect(htmlPart(gmail.sent[1].raw)).toContain('<p>Thanks!</p><br><p>Team</p>')
+  })
+
+  it('customHtmlIsCleaned', async () => {
+    await enqueue(db, input({
+      batchId: 'c1', templateId: null, custom: { subject: 'S', body: 'x', html: '<p>Hi</p><script>bad()</script>' }, speakerKeys: [ADA],
+    }), admin, T0)
+    await run(T0 + MIN)
+    const html = htmlPart(gmail.sent[0].raw)
+    expect(html).toContain('<p>Hi</p>')
+    expect(html).not.toContain('script')
+    expect(html).not.toContain('bad()')
   })
 
   it('scheduled email renders at send time with new event value', async () => {

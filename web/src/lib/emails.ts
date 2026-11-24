@@ -228,6 +228,12 @@ export function emptyEventFillIns(t: { subject: string; body: string }, fields: 
   return fillInsIn(`${t.subject}\n${t.body}`).filter((n) => empty.has(n))
 }
 
+/** The fill-ins the message editor offers: the speaker's, then each event setting by its label. */
+export const editorFillIns = (fields: EventField[]): { name: string; label: string }[] => [
+  ...SPEAKER_FILL_INS.map((k) => ({ name: k, label: k })),
+  ...fields.map((f) => ({ name: f.key, label: f.label || f.key })),
+]
+
 /** Fill-ins a template uses that are neither speaker fill-ins nor event settings; malformed ones as written. */
 export function unknownFillIns(t: { subject: string; body: string }, fields: EventField[]): string[] {
   const known = new Set<string>([...SPEAKER_FILL_INS, ...fields.map((f) => f.key)])

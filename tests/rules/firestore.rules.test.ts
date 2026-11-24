@@ -375,6 +375,15 @@ describe('templates', () => {
     await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ attachments: Array.from({ length: 11 }, (_, i) => ({ name: `f${i}` })) })));
     await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ attachments: 'x' })));
   });
+  it('admin can set html as a string up to 200,000 chars or null', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ html: '<p>Hello there</p>' })));
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t3'), tpl({ html: null })));
+    await assertSucceeds(setDoc(doc(as('adm1'), 'templates/t4'), tpl({ html: 'x'.repeat(200000) })));
+  });
+  it('admin cannot set a non-string html or one over 200,000 chars', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ html: 3 })));
+    await assertFails(setDoc(doc(as('adm1'), 'templates/t2'), tpl({ html: 'x'.repeat(200001) })));
+  });
 });
 
 describe('meta/event', () => {
@@ -410,6 +419,14 @@ describe('meta/event', () => {
   it('admin cannot write more than 50 fields or a non-list', async () => {
     await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ fields: Array.from({ length: 51 }, (_, i) => ({ key: `k${i}` })) })));
     await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ fields: 'x' })));
+  });
+  it('admin can set a signatureHtml string up to 50,000 chars', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: '<p>The team</p>' })));
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: 'x'.repeat(50000) })));
+  });
+  it('admin cannot set a non-string signatureHtml or one over 50,000 chars', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: null })));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: 'x'.repeat(50001) })));
   });
   it('admin still cannot write meta/sync or meta/other', async () => {
     await assertFails(setDoc(doc(as('adm1'), 'meta/sync'), { at: 2 }));

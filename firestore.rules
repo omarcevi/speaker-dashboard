@@ -52,9 +52,11 @@ service cloud.firestore {
     // other meta doc; this adds an admin write for meta/event only.
     match /meta/event {
       allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['fields', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && request.resource.data.keys().hasOnly(['fields', 'signatureHtml', 'updatedAt', 'updatedBy', 'updatedByName'])
         && request.resource.data.fields is list
         && request.resource.data.fields.size() <= 50
+        && (!('signatureHtml' in request.resource.data)
+          || (request.resource.data.signatureHtml is string && request.resource.data.signatureHtml.size() <= 50000))
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.updatedByName == me().name
         && request.resource.data.updatedAt == request.time;
@@ -63,13 +65,15 @@ service cloud.firestore {
     match /templates/{id} {
       allow read: if isMember();
       allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['name', 'subject', 'body', 'attachments', 'rule', 'stageId', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && request.resource.data.keys().hasOnly(['name', 'subject', 'body', 'html', 'attachments', 'rule', 'stageId', 'updatedAt', 'updatedBy', 'updatedByName'])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.subject is string
         && request.resource.data.subject.size() >= 1
         && request.resource.data.body is string
         && request.resource.data.body.size() <= 50000
+        && (!('html' in request.resource.data) || request.resource.data.html == null
+          || (request.resource.data.html is string && request.resource.data.html.size() <= 200000))
         && request.resource.data.attachments is list
         && request.resource.data.attachments.size() <= 10
         && request.resource.data.rule in ['acceptance', 'decline', 'approved', 'anyone']

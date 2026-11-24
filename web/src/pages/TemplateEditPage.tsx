@@ -1,24 +1,31 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { fillInLabel, isFillInName, renderEmail, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
+import { fillInLabel, isFillInName, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
 import { fillInValues, type SpeakerGroup } from '../../../functions/src/email/recipients.ts'
 import type { EmailTemplate, EventField, RecipientRule, TemplateAttachment } from '../../../functions/src/model.ts'
+import { cleanEmailHtml, isBlankHtml, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
+import { EmailFrame } from '../components/EmailFrame.tsx'
 import { IconLeft } from '../components/Icons.tsx'
+import LazyRichEditor from '../components/LazyRichEditor.tsx'
 import Marked from '../components/Marked.tsx'
 import { newTemplateId, saveTemplate, uploadTemplateAttachment, type TemplateInput } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
 import { useSpeakers, type Speakers } from '../data/useSpeakers.ts'
 import {
-  emptyEventFillIns, formatBytes, MAX_ATTACHMENT_BYTES, RULE_ORDER, RULES, unknownFillIns,
+  editorFillIns, emptyEventFillIns, formatBytes, MAX_ATTACHMENT_BYTES, RULE_ORDER, RULES, unknownFillIns,
 } from '../lib/emails.ts'
+import { previewHtml } from '../lib/send.ts'
 import { formatWhen } from '../lib/syncStatus.ts'
 
 type Template = EmailTemplate & { id: string }
 const MAX_ATTACHMENTS = 10 // the rules' cap
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
-const blank: TemplateInput = { name: '', rule: 'approved', subject: '', body: '', attachments: [] }
-const inputOf = (t: Template): TemplateInput => ({ name: t.name, rule: t.rule, subject: t.subject, body: t.body, attachments: t.attachments })
+const blank: TemplateInput = { name: '', rule: 'approved', subject: '', body: '', html: '', attachments: [] }
+// A template saved before HTML opens as its body in paragraphs.
+const inputOf = (t: Template): TemplateInput => ({
+  name: t.name, rule: t.rule, subject: t.subject, body: t.body, html: templateHtml(t), attachments: t.attachments,
+})
 const same = (a: TemplateInput, b: TemplateInput) => JSON.stringify(a) === JSON.stringify(b)
 
 // Talks a preview covers when the speaker can't get this template right now: what the rule would list.
@@ -29,7 +36,7 @@ function talksFor(rule: RecipientRule, g: SpeakerGroup, sp: Speakers): string[] 
   return approved.length ? approved : all
 }
 
-function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fields: EventField[] }) {
+function Preview({ id, draft, fields, signatureHtml }: { id: string; draft: TemplateInput; fields: EventField[]; signatureHtml: string }) {
   const sp = useSpeakers()
   // Speakers this template is for (or already went to); anyone if nobody fits yet.
   const fits = sp.groups.filter((g) => {
@@ -49,7 +56,8 @@ function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fiel
   } else {
     values = { ...Object.fromEntries(SPEAKER_FILL_INS.map((k) => [k, ''])), ...Object.fromEntries(fields.map((f) => [f.key, f.value])) }
   }
-  const rendered = renderEmail(draft, values)
+  const rendered = previewHtml(draft, values, signatureHtml)
+  const blocked = [...rendered.missing, ...rendered.empty]
   const name = g ? `${g.name.first} ${g.name.last}`.trim() : ''
 
   return (
@@ -72,20 +80,22 @@ function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fiel
           {cc.length > 0 && <><dt>Cc</dt><dd>{cc.join(', ')}</dd></>}
           <dt>Subject</dt><dd className="subj">{draft.subject ? <Marked text={draft.subject} values={values} /> : <span className="muted">No subject</span>}</dd>
         </dl>
-        <div className="mail-b">{draft.body ? <Marked text={draft.body} values={values} /> : <span className="muted">Start writing on the left.</span>}</div>
+        <div className="mail-b">
+          {isBlankHtml(templateHtml(draft)) ? <span className="muted">Start writing on the left.</span> : <EmailFrame html={rendered.html} title="Message preview" />}
+        </div>
         {draft.attachments.length > 0 && (
           <div className="mail-att">
             {draft.attachments.map((a) => <span key={a.path} className="att">{a.name} <span className="muted">{formatBytes(a.size)}</span></span>)}
           </div>
         )}
       </div>
-      {!rendered.ok && g && (
+      {blocked.length > 0 && g && (
         <p className="warn-line" style={{ marginTop: 12 }}>
-          <span>Won't send to {name} yet: {[...rendered.missing, ...rendered.empty].map(fillInLabel).join(', ')}</span>
+          <span>Won't send to {name} yet: {blocked.map(fillInLabel).join(', ')}</span>
         </p>
       )}
       <p className="hint" style={{ marginTop: 12 }}>
-        Grey marks are filled in for this speaker. A dashed box means a fill-in is unknown, malformed or empty, and the email won't send until it's fixed.
+        The message is shown as this speaker gets it, team signature included. A fill-in left in braces is unknown, malformed or empty, and the email won't send until it's fixed.
       </p>
     </section>
   )
@@ -94,7 +104,7 @@ function Preview({ id, draft, fields }: { id: string; draft: TemplateInput; fiel
 function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNew: boolean }) {
   const { me } = useAuth()
   const admin = me?.role === 'admin'
-  const { event } = useData()
+  const { event, signatureHtml } = useData()
   const fields = event?.fields ?? []
   const navigate = useNavigate()
   const [base, setBase] = useState<TemplateInput>(() => (saved ? inputOf(saved) : blank))
@@ -105,24 +115,24 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
   const [fileError, setFileError] = useState<string | null>(null)
   const [over, setOver] = useState(false)
   const subjectEl = useRef<HTMLInputElement>(null)
-  const bodyEl = useRef<HTMLTextAreaElement>(null)
-  const lastField = useRef<'subject' | 'body'>('body')
   const fileEl = useRef<HTMLInputElement>(null)
 
   const dirty = !same(base, draft)
   const set = (patch: Partial<TemplateInput>) => setDraft((d) => ({ ...d, ...patch }))
-  const unknown = unknownFillIns(draft, fields)
-  const empty = emptyEventFillIns(draft, fields)
+  // Warnings come from what is saved and sent: the subject and the message's HTML.
+  const sent = { subject: draft.subject, body: templateHtml(draft) }
+  const unknown = unknownFillIns(sent, fields)
+  const empty = emptyEventFillIns(sent, fields)
 
+  // The message has its own fill-in menu; these chips go into the subject.
   const insert = (name: string) => {
-    const which = lastField.current
-    const el = which === 'subject' ? subjectEl.current : bodyEl.current
+    const el = subjectEl.current
     if (!el) return
-    const value = draft[which]
+    const value = draft.subject
     const start = el.selectionStart ?? value.length
     const end = el.selectionEnd ?? start
     const token = `{{${name}}}`
-    set({ [which]: value.slice(0, start) + token + value.slice(end) })
+    set({ subject: value.slice(0, start) + token + value.slice(end) })
     requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = start + token.length })
   }
 
@@ -216,12 +226,14 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
           <div className="field">
             <label htmlFor="subject">Subject</label>
             <input ref={subjectEl} className="input" id="subject" value={draft.subject} readOnly={!admin}
-              onFocus={() => { lastField.current = 'subject' }} onChange={(e) => set({ subject: e.target.value })} />
+              onChange={(e) => set({ subject: e.target.value })} />
           </div>
           <div className="field">
-            <label htmlFor="body">Message</label>
-            <textarea ref={bodyEl} className="area" id="body" value={draft.body} readOnly={!admin}
-              onFocus={() => { lastField.current = 'body' }} onChange={(e) => set({ body: e.target.value })} />
+            <span className="label">Message</span>
+            {admin ? (
+              <LazyRichEditor value={draft.html ?? ''} ariaLabel="Message" fillIns={editorFillIns(fields)}
+                onChange={(html) => set({ html })} onText={(body) => set({ body })} />
+            ) : <EmailFrame html={cleanEmailHtml(templateHtml(draft))} title="Message" />}
             <div>
               {unknown.map((n) => (
                 <div key={`u-${n}`} className="warn-line" style={{ marginTop: 6 }}>
@@ -237,7 +249,7 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
           </div>
           {admin && (
             <div className="field">
-              <span className="label">Insert a fill-in at the cursor</span>
+              <span className="label">Insert a fill-in in the subject</span>
               <div className="chip-group">
                 <span className="hint">Speaker</span>
                 <div className="chips">{SPEAKER_FILL_INS.map((k) => <button key={k} type="button" className="chip" onClick={() => insert(k)}>{k}</button>)}</div>
@@ -277,7 +289,7 @@ function Editor({ id, saved, isNew }: { id: string; saved: Template | null; isNe
             {fileError && <p className="inline-error" role="alert">{fileError}</p>}
           </div>
         </section>
-        <Preview id={id} draft={draft} fields={fields} />
+        <Preview id={id} draft={draft} fields={fields} signatureHtml={signatureHtml} />
       </div>
     </>
   )

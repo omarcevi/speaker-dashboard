@@ -1,8 +1,9 @@
-import { isFillInName, renderEmail } from '../../../functions/src/email/fillIns.ts'
+import { fillInLabel, isFillInName } from '../../../functions/src/email/fillIns.ts'
 import {
   decision, eligibility, fillInValues, inFlightConflict, needsFollowUp, type Eligibility, type SpeakerGroup,
 } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, EventField, RecipientRule, Status } from '../../../functions/src/model.ts'
+import { renderHtmlEmail, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 
 // Pure parts of the send flow: who can get a template (the tabs on step 1) and what each recipient's email looks like.
 // The server re-checks all of it; this is the preview of the same rules.
@@ -75,6 +76,24 @@ export function nameList(names: string[], max = 5): string {
   return names.length > max ? `${shown} +${names.length - max} more` : shown
 }
 
+export interface PreviewHtml {
+  /** The body as the speaker gets it, signature included. A blocked fill-in shows as written, like {{venue}}. */
+  html: string
+  /** Fill-ins that are unknown or empty for this speaker: the email can't send. */
+  missing: string[]
+  empty: string[]
+}
+
+/** The email body for these values, rendered as the server renders it (template HTML, or the body as paragraphs). */
+export function previewHtml(source: { subject: string; body: string; html?: string | null }, values: Record<string, string>, signatureHtml: string): PreviewHtml {
+  const t = { subject: source.subject, html: templateHtml(source) }
+  const r = renderHtmlEmail(t, values, signatureHtml)
+  if (r.ok) return { html: r.html, missing: [], empty: [] }
+  const shown = Object.fromEntries([...r.missing, ...r.empty].map((n) => [n, fillInLabel(n)]))
+  const lenient = renderHtmlEmail(t, { ...values, ...shown }, signatureHtml)
+  return { html: lenient.ok ? lenient.html : '', missing: r.missing, empty: r.empty }
+}
+
 export interface Prepared {
   g: SpeakerGroup
   /** Why this speaker can't get it any more (status changed since step 1, say); null when they can. */
@@ -83,6 +102,8 @@ export interface Prepared {
   cc: string[]
   flags: string[]
   values: Record<string, string>
+  /** The body as the preview shows it, signature included. */
+  html: string
   /** Fill-ins that are unknown or empty for this speaker: the email can't send. */
   missing: string[]
   empty: string[]
@@ -90,8 +111,8 @@ export interface Prepared {
 
 /** One recipient's email as the preview shows it. */
 export function prepare(
-  rule: RecipientRule, source: { subject: string; body: string }, g: SpeakerGroup, j: Judge, fields: EventField[],
-  opts: { templateId: string | null; followUp: boolean },
+  rule: RecipientRule, source: { subject: string; body: string; html?: string | null }, g: SpeakerGroup, j: Judge, fields: EventField[],
+  opts: { templateId: string | null; followUp: boolean; signatureHtml: string },
 ): Prepared {
   const history = j.historyOf(g.speakerKey)
   const e: Eligibility = inFlightConflict(history, opts.templateId, rule)
@@ -99,10 +120,10 @@ export function prepare(
     : eligibility(rule, g, j.status, history, { speakerKeys: j.speakerKeys, templateId: opts.templateId, followUp: opts.followUp })
   const talkIds = e.ok ? e.talkIds : g.cards.map((c) => c.id)
   const values = fillInValues(g, talkIds, fields)
-  const r = renderEmail(source, values)
+  const r = previewHtml(source, values, opts.signatureHtml)
   return {
     g, refused: e.ok ? null : e.reason, talkIds, cc: e.ok ? e.cc : [], flags: e.ok ? e.flags : [], values,
-    missing: r.ok ? [] : r.missing, empty: r.ok ? [] : r.empty,
+    html: r.html, missing: r.missing, empty: r.empty,
   }
 }
 
