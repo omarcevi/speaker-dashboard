@@ -30,7 +30,7 @@ export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] }, code: false, codeBlock: false,
-        link: { openOnClick: false, autolink: true },
+        link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
       }),
       Image,
     ],
