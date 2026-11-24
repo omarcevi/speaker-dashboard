@@ -10,6 +10,8 @@ export interface GmailClient {
   getAttachment(messageId: string, attachmentId: string): Promise<Buffer>
   /** Adds the dashboard's Gmail label to a message, creating the label the first time. */
   label(messageId: string): Promise<void>
+  /** Messages matching a Gmail search, newest first. */
+  listMessages(query: string): Promise<{ id: string; threadId: string }[]>
 }
 
 export interface DelegatedGmailDeps {
@@ -105,6 +107,17 @@ export function delegatedGmail(opts: { serviceAccount: string; user: string; lab
         labelId = undefined
         throw e
       }
+    },
+    async listMessages(query) {
+      const out: { id: string; threadId: string }[] = []
+      let pageToken = ''
+      do {
+        const qs = new URLSearchParams({ q: query, maxResults: '500', ...(pageToken ? { pageToken } : {}) })
+        const r = await call<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>('list', `/messages?${qs}`)
+        out.push(...(r.messages ?? []).map((m) => ({ id: m.id, threadId: m.threadId })))
+        pageToken = r.nextPageToken ?? ''
+      } while (pageToken)
+      return out
     },
     async send(raw, threadId) {
       const r = await call<{ id: string; threadId: string }>('send', '/messages/send', { body: threadId ? { raw, threadId } : { raw } })

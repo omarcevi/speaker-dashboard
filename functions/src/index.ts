@@ -158,6 +158,7 @@ function emulatorGmail(): GmailClient {
     send: (raw, threadId) => fake.send(raw, threadId),
     getAttachment: (messageId, attachmentId) => fake.getAttachment(messageId, attachmentId),
     label: (messageId) => fake.label(messageId),
+    listMessages: (query) => fake.listMessages(query),
     async getThread(threadId) {
       const injected = await getFirestore().collection('devMail').where('threadId', '==', threadId).get();
       return [...await fake.getThread(threadId), ...injected.docs.map(d => JSON.parse(d.get('json') as string) as GmailMessage)];

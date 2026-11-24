@@ -31,11 +31,11 @@ const FROM_NAME = 'DevFest Istanbul'
 export const emailId = (batchId: string, speakerKey: string) =>
   `${batchId}__${createHash('sha1').update(speakerKey).digest('hex').slice(0, 12)}`
 
-const isDecisionRule = (r: RecipientRule) => r === 'acceptance' || r === 'decline'
+export const isDecisionRule = (r: RecipientRule) => r === 'acceptance' || r === 'decline'
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300)
-const isAlreadyExists = (e: unknown) => (e as { code?: unknown }).code === 6
+export const isAlreadyExists = (e: unknown) => (e as { code?: unknown }).code === 6
 
-async function templateOf(db: Firestore, id: string): Promise<EmailTemplate> {
+export async function templateOf(db: Firestore, id: string): Promise<EmailTemplate> {
   const snap = await db.doc(`templates/${id}`).get()
   if (!snap.exists) throw new QueueRefused('Template not found')
   return snap.data() as EmailTemplate

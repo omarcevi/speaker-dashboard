@@ -38,6 +38,11 @@ export function fakeGmail(): FakeGmail {
   return {
     sent,
     labelled,
+    async listMessages() {
+      // Every sent message, newest first; the fake ignores the query.
+      return [...threads.values()].flat().filter((m) => m.labelIds?.includes('SENT'))
+        .map((m) => ({ id: m.id!, threadId: m.threadId! })).reverse()
+    },
     async label(messageId) {
       labelled.push(messageId)
     },
