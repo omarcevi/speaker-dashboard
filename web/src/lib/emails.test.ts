@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
-  ago, bounceSummary, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
+  aiNote, ago, bounceSummary, showsWithdrawWarning, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
   emailTitle, historyChipLabel, usesSignatureLayout, historyByLine, speakerHistory, emailedLine, istanbulTime,
 } from './emails.ts'
@@ -299,5 +299,54 @@ describe('usesSignatureLayout', () => {
     expect(usesSignatureLayout('<span style="color:red">x</span>')).toBe(true)
     expect(usesSignatureLayout('<p><b>The team</b> <a href="https://x.test">x.test</a></p>')).toBe(false)
     expect(usesSignatureLayout('<p>Our tables and style= notes</p>')).toBe(false)
+  })
+})
+
+describe('settled replies', () => {
+  const settled = (by: string, id = 'm1') => ({ messageId: id, by, byName: by === 'ai' ? 'AI' : 'Sam', at: ts(1) })
+  const probs = (o: Partial<Record<'needs_answer' | 'no_answer_needed' | 'withdrawing' | 'unclear', number>>) =>
+    ({ needs_answer: 0, no_answer_needed: 0, withdrawing: 0, unclear: 0, ...o })
+  const reading = (p: ReturnType<typeof probs> | null, over = {}) => ({ messageId: 'm1', label: null, probabilities: p, confidence: null, model: 'x', at: ts(1), error: null, ...over })
+  const replied = (over: Partial<ThreadDoc> = {}) => thread({ lastReplyAt: ts(REPLY), lastTeamAt: ts(REPLY - 1), lastSnippet: 'Thanks!', lastReplyId: 'm1', ...over })
+
+  it('a current settled reply is not waiting', () => {
+    const t = replied({ settled: settled('ai') })
+    expect(speakerWroteLast(t)).toBe(false)
+    expect(needsLook(email(), t)).toBe(false)
+  })
+  it('a stale settled reply still waits', () => {
+    const t = replied({ settled: settled('ai', 'old') })
+    expect(speakerWroteLast(t)).toBe(true)
+    expect(needsLook(email(), t)).toBe(true)
+  })
+  it('latestLine says who cleared it', () => {
+    expect(latestLine(email(), replied({ settled: settled('ai') }), 'Priya')).toBe('Cleared by AI · Thanks!')
+    expect(latestLine(email(), replied({ settled: settled('ai'), lastSnippet: '' }), 'Priya')).toBe('Cleared by AI')
+    expect(latestLine(email(), replied({ settled: settled('u1') }), 'Priya')).toBe('Marked no reply needed · Sam · Thanks!')
+  })
+  it('aiNote', () => {
+    expect(aiNote(replied())).toBeNull()
+    expect(aiNote(replied({ ai: reading(probs({ needs_answer: 1 }), { messageId: 'old' }) }))).toBeNull()
+    expect(aiNote(replied({ ai: reading(null, { error: 'boom' }) }))).toBeNull()
+    expect(aiNote(replied({ ai: reading(probs({ no_answer_needed: 0.97 })), settled: settled('ai') }))).toEqual({ text: 'AI: no reply needed · cleared', tone: '' })
+    expect(aiNote(replied({ ai: reading(probs({ needs_answer: 0.5, withdrawing: 0.4, unclear: 0.1 })) }))).toEqual({ text: 'AI: may be withdrawing', tone: 'warn' })
+    expect(aiNote(replied({ ai: reading(probs({ needs_answer: 0.876, withdrawing: 0.1, unclear: 0.024 })) }))).toEqual({ text: 'AI: needs an answer · 88%', tone: '' })
+    expect(aiNote(replied({ ai: reading(probs({ no_answer_needed: 0.9, withdrawing: 0.1 })) }))).toEqual({ text: 'AI: no reply needed · 90%', tone: '' })
+    expect(aiNote(replied({ ai: reading(probs({ unclear: 0.6, needs_answer: 0.4 })) }))).toEqual({ text: 'AI: unclear · 60%', tone: '' })
+  })
+  it('latestLine prefers the team answer when the team wrote after a settled reply', () => {
+    const answered = { lastTeamAt: ts(TEAM), lastReplyAt: ts(REPLY) }
+    expect(latestLine(email(), replied({ ...answered, settled: settled('ai') }), 'Priya')).toBe('Answered by the team · 19 Nov, 11:30 · Thanks!')
+    expect(latestLine(email(), replied({ ...answered, settled: settled('u1') }), 'Priya')).toBe('Answered by the team · 19 Nov, 11:30 · Thanks!')
+  })
+  it('shows the withdrawing warning only while the reply is unanswered by the team', () => {
+    const warn = reading(probs({ needs_answer: 0.5, withdrawing: 0.4, unclear: 0.1 }))
+    expect(showsWithdrawWarning(replied({ ai: warn }))).toBe(true)
+    // Settled but the team has not written since: still shown.
+    expect(showsWithdrawWarning(replied({ ai: warn, settled: settled('u1') }))).toBe(true)
+    // The team wrote after the reply: hidden.
+    expect(showsWithdrawWarning(replied({ ai: warn, lastTeamAt: ts(TEAM) }))).toBe(false)
+    expect(showsWithdrawWarning(replied({ ai: reading(probs({ needs_answer: 1 })) }))).toBe(false)
+    expect(showsWithdrawWarning(undefined)).toBe(false)
   })
 })

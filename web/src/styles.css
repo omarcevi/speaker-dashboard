@@ -636,3 +636,10 @@ html.projector .emails-card { display: none; }
 .savebar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
 @media (max-width: 960px) { .stage .fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 @media (max-width: 720px) { .stage { grid-template-columns: minmax(0, 1fr); } .stage .ord { flex-direction: row; } .stage .fields { grid-template-columns: minmax(0, 1fr); } }
+/* AI reply assistant in the conversation sheet: the reading under the newest reply, members' suggested reply, gap check */
+.ai-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: -4px 0 0 58px; }
+.ai-line .inline-error { flex-basis: 100%; }
+.suggested { margin-left: 58px; padding: 10px 12px; background: var(--raised); border: 1px solid var(--rule); border-radius: var(--r-inner); }
+.suggested p { margin-top: 4px; white-space: pre-wrap; color: var(--muted); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.gap-confirm { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; }
+@media (max-width: 720px) { .ai-line, .suggested { margin-left: 0; } }

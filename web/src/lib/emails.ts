@@ -1,5 +1,6 @@
 import { fillInParts, fillInsIn, SPEAKER_FILL_INS } from '../../../functions/src/email/fillIns.ts'
 import type { EmailDoc, EventField, RecipientRule, ThreadDoc } from '../../../functions/src/model.ts'
+import { clearedByAi, currentFor, isSettled, mayWithdraw, topLabel } from '../../../functions/src/shared/replyAi.ts'
 import { formatWhen } from './syncStatus.ts'
 
 // Event times are Istanbul time (UTC+3, no DST) whatever the browser's zone.
@@ -56,10 +57,30 @@ export function lastDecisionEmail<T extends EmailDoc>(history: T[]): T | undefin
   return best
 }
 
-/** The speaker wrote after the team's last message. A tie counts as answered. */
+/** The speaker wrote after the team's last message, and that reply is not settled. A tie counts as answered. */
 export function speakerWroteLast(thread: ThreadDoc | undefined): boolean {
   const reply = thread?.lastReplyAt?.toMillis()
-  return reply !== undefined && reply > (thread?.lastTeamAt?.toMillis() ?? 0)
+  return reply !== undefined && reply > (thread?.lastTeamAt?.toMillis() ?? 0) && !isSettled(thread)
+}
+
+const AI_WORDS = { needs_answer: 'needs an answer', no_answer_needed: 'no reply needed', unclear: 'unclear' } as const
+
+/** What the AI made of the newest reply, for the Emails list. Null when it has no current reading. */
+export function aiNote(thread: ThreadDoc | undefined): { text: string; tone: 'warn' | '' } | null {
+  const ai = currentFor(thread, thread?.ai)
+  if (!thread || !ai || ai.error || !ai.probabilities) return null
+  const p = ai.probabilities
+  if (clearedByAi(thread)) return { text: 'AI: no reply needed · cleared', tone: '' }
+  if (mayWithdraw(p)) return { text: 'AI: may be withdrawing', tone: 'warn' }
+  const top = topLabel(p)
+  if (top === 'withdrawing') return { text: 'AI: may be withdrawing', tone: 'warn' }
+  return { text: `AI: ${AI_WORDS[top]} · ${Math.round(p[top] * 100)}%`, tone: '' }
+}
+
+/** The "May be withdrawing" chip: the AI warns, and the team has not written since that reply (settled or not). */
+export function showsWithdrawWarning(thread: ThreadDoc | undefined): boolean {
+  if (aiNote(thread)?.tone !== 'warn') return false
+  return !((thread?.lastTeamAt?.toMillis() ?? 0) > (thread?.lastReplyAt?.toMillis() ?? 0))
 }
 
 export function needsLook(e: EmailDoc, thread: ThreadDoc | undefined): boolean {
@@ -81,6 +102,10 @@ export function latestLine(e: EmailDoc, thread: ThreadDoc | undefined, firstName
   if (thread && reply !== undefined) {
     const team = thread.lastTeamAt?.toMillis() ?? 0
     const snippet = thread.lastSnippet ? ` · ${thread.lastSnippet}` : ''
+    // The team wrote after the newest reply: that says more than how the reply was settled.
+    if (team > reply) return `Answered by the team · ${shortDateTime(team)}${snippet}`
+    const settled = currentFor(thread, thread.settled)
+    if (settled) return settled.by === 'ai' ? `Cleared by AI${snippet}` : `Marked no reply needed · ${settled.byName}${snippet}`
     return !speakerWroteLast(thread) ? `Answered by the team · ${shortDateTime(team)}${snippet}` : `${firstName} replied · ${shortDateTime(reply)}${snippet}`
   }
   return 'No reply yet'

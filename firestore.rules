@@ -52,11 +52,13 @@ service cloud.firestore {
     // other meta doc; this adds an admin write for meta/event only.
     match /meta/event {
       allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['fields', 'signatureHtml', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && request.resource.data.keys().hasOnly(['fields', 'signatureHtml', 'speakerFacts', 'updatedAt', 'updatedBy', 'updatedByName'])
         && request.resource.data.fields is list
         && request.resource.data.fields.size() <= 50
         && (!('signatureHtml' in request.resource.data)
           || (request.resource.data.signatureHtml is string && request.resource.data.signatureHtml.size() <= 50000))
+        && (!('speakerFacts' in request.resource.data)
+          || (request.resource.data.speakerFacts is string && request.resource.data.speakerFacts.size() <= 20000))
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.updatedByName == me().name
         && request.resource.data.updatedAt == request.time;
@@ -118,7 +120,19 @@ service cloud.firestore {
 
     match /threads/{id} {
       allow read: if isMember();
-      allow write: if false;
+      // Thread docs are function-written. Admins may only settle a reply (or undo it).
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settled'])
+        && (request.resource.data.settled == null
+          || (request.resource.data.settled is map
+            && request.resource.data.settled.keys().hasOnly(['messageId', 'by', 'byName', 'at'])
+            && request.resource.data.settled.messageId is string
+            && request.resource.data.settled.messageId.size() >= 1
+            && request.resource.data.settled.messageId.size() <= 200
+            && request.resource.data.settled.by == request.auth.uid
+            && request.resource.data.settled.byName == me().name
+            && request.resource.data.settled.at == request.time));
+      allow create, delete: if false;
 
       match /messages/{m} {
         allow read: if isMember();

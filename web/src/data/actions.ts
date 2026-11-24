@@ -93,8 +93,8 @@ export async function uploadTemplateAttachment(templateId: string, file: File): 
   return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
 }
 
-export async function saveEvent(fields: EventField[], signatureHtml: string, me: Actor): Promise<void> {
-  await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+export async function saveEvent(fields: EventField[], signatureHtml: string, speakerFacts: string, me: Actor): Promise<void> {
+  await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, speakerFacts, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
 }
 
 export async function saveStages(stages: Stage[], me: Actor): Promise<void> {
@@ -110,4 +110,14 @@ export async function setStageException(speakerKey: string, stageId: string, whi
     const current = readExceptions((await tx.get(ref)).data())
     tx.set(ref, { ...changedExceptions(current, stageIds, stageId, which, on), updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
   })
+}
+
+/** "No reply needed" for the thread's newest reply. Rules check only the shape and who marked it, not lastReplyId:
+ *  a mark for a reply that is no longer the newest is simply ignored (currentFor). */
+export async function settleReply(threadId: string, messageId: string, me: Actor): Promise<void> {
+  await updateDoc(doc(db, 'threads', threadId), { settled: { messageId, by: me.uid, byName: me.name, at: serverTimestamp() } })
+}
+
+export async function unsettleReply(threadId: string): Promise<void> {
+  await updateDoc(doc(db, 'threads', threadId), { settled: null })
 }

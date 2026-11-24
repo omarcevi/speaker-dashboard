@@ -98,10 +98,17 @@ async function pollThread(
       tx.update(threadRef, { lastCheckedAt: Timestamp.fromMillis(opts.now) })
       return { replies: 0, bounces: 0 }
     }
+    // Threads from before lastReplyId existed: find their newest stored reply. Reads must come before this transaction's writes.
+    let lastReplyId = t.lastReplyId
+    if (!lastReplyId && t.lastReplyAt) {
+      const recentMsgs = await tx.get(threadRef.collection('messages').orderBy('at', 'desc').limit(10))
+      lastReplyId = recentMsgs.docs.find((d) => (d.data() as ReceivedMessage).kind === 'reply')?.id
+    }
     const ours = new Set([...t.seenIds, ...emails.flatMap((x) => (x.e.gmailMessageId ? [x.e.gmailMessageId] : []))])
 
     const seen = new Set(t.seenIds)
     const stored: ParsedMessage[] = []
+    const gmailIds = new Map<ParsedMessage, string>()
     const fresh: typeof fetched = []
     for (const m of fetched) {
       if (!m.id || !ID.test(m.id)) continue
@@ -118,7 +125,9 @@ async function pollThread(
       const doc: ReceivedMessage = { ...capMessage(rest), at: Timestamp.fromMillis(atMs) }
       tx.set(threadRef.collection('messages').doc(id), doc)
       seen.add(id)
-      stored.push({ ...p, text: doc.text })
+      const kept = { ...p, text: doc.text }
+      stored.push(kept)
+      gmailIds.set(kept, id)
     }
 
     const sent = emails.filter((x) => x.e.state === 'sent')
@@ -128,6 +137,7 @@ async function pollThread(
     let lastTeamAt = t.lastTeamAt
     let replies = 0
     let bounces = 0
+    let newestReply: ParsedMessage | null = null
     for (const p of stored) {
       if (p.kind === 'team') {
         lastTeamAt = maxTs(lastTeamAt, p.atMs)
@@ -137,6 +147,7 @@ async function pollThread(
       if (p.kind === 'reply') {
         replies++
         lastReplyAt = maxTs(lastReplyAt, p.atMs)
+        if (!newestReply || p.atMs >= newestReply.atMs) newestReply = p
         if (target) {
           const e = current(target)
           updates.set(target.ref, { ...updates.get(target.ref), replyCount: e.replyCount + 1, lastReplyAt: maxTs(e.lastReplyAt, p.atMs) })
@@ -151,8 +162,10 @@ async function pollThread(
     // The snippet follows the newest message, so an older message found late doesn't replace a newer one.
     const newest = stored.reduce<ParsedMessage | null>((a, p) => (a && a.atMs >= p.atMs ? a : p), null)
     const latestKnown = Math.max(t.lastReplyAt?.toMillis() ?? 0, t.lastTeamAt?.toMillis() ?? 0)
+    // Only a reply at least as new as the thread's newest one takes over the id.
+    if (newestReply && newestReply.atMs >= (t.lastReplyAt?.toMillis() ?? 0)) lastReplyId = gmailIds.get(newestReply)
     const thread: Partial<ThreadDoc> = {
-      seenIds: [...seen], lastCheckedAt: Timestamp.fromMillis(opts.now), lastReplyAt, lastTeamAt,
+      ...(lastReplyId ? { lastReplyId } : {}), seenIds: [...seen], lastCheckedAt: Timestamp.fromMillis(opts.now), lastReplyAt, lastTeamAt,
       ...(newest && newest.atMs >= latestKnown ? { lastSnippet: snippet(newest.text) } : {}),
     }
     tx.update(threadRef, thread)

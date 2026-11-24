@@ -430,6 +430,15 @@ describe('meta/event', () => {
     await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: null })));
     await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ signatureHtml: 'x'.repeat(50001) })));
   });
+  it('admin can set speakerFacts up to 20,000 chars, and saves without it still work', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/event'), ev({ speakerFacts: 'x'.repeat(20000) })));
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/event'), ev()));
+  });
+  it('admin cannot set a non-string speakerFacts or one over 20,000 chars', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ speakerFacts: 'x'.repeat(20001) })));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ speakerFacts: 5 })));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/event'), ev({ speakerFacts: null })));
+  });
   it('admin still cannot write meta/sync or meta/other', async () => {
     await assertFails(setDoc(doc(as('adm1'), 'meta/sync'), { at: 2 }));
     await assertFails(setDoc(doc(as('adm1'), 'meta/other'), ev()));
@@ -520,6 +529,40 @@ describe('emails and threads', () => {
   }
   it('nobody can create a new email', async () => {
     await assertFails(setDoc(doc(as('adm1'), 'emails/new'), { subject: 'x' }));
+  });
+  describe('settling a reply', () => {
+    const settled = (extra: object = {}) => ({
+      messageId: 'm1', by: 'adm1', byName: 'Adele', at: serverTimestamp(), ...extra,
+    });
+    const th = (uid: string) => doc(as(uid), 'threads/th1');
+    it('admin can settle and undo', async () => {
+      await assertSucceeds(updateDoc(th('adm1'), { settled: settled() }));
+      await assertSucceeds(updateDoc(th('adm1'), { settled: null }));
+    });
+    it('admin cannot change any other thread field', async () => {
+      await assertFails(updateDoc(th('adm1'), { subject: 'Changed' }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled(), subject: 'Changed' }));
+    });
+    it('admin cannot settle as ai, as another uid, or with a bad shape', async () => {
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ by: 'ai' }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ by: 'mem1' }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ byName: 'Mo' }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ at: new Date() }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ messageId: '' }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ messageId: 'x'.repeat(201) }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: settled({ extra: 1 }) }));
+      await assertFails(updateDoc(th('adm1'), { settled: 'yes' }));
+    });
+    it('members and others cannot settle or undo', async () => {
+      for (const uid of ['mem1', 'wait1', 'rem1']) {
+        await assertFails(updateDoc(th(uid), { settled: settled({ by: uid, byName: NAMES[uid] }) }));
+        await assertFails(updateDoc(th(uid), { settled: null }));
+      }
+    });
+    it('admin cannot create or delete threads', async () => {
+      await assertFails(setDoc(doc(as('adm1'), 'threads/new'), { settled: settled() }));
+      await assertFails(deleteDoc(th('adm1')));
+    });
   });
   it('members can list emails and threads', async () => {
     await assertSucceeds(getDocs(collection(as('mem1'), 'emails')));

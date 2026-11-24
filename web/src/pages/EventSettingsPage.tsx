@@ -8,7 +8,9 @@ import EmailsTabs from '../components/EmailsTabs.tsx'
 import LazyRichEditor from '../components/LazyRichEditor.tsx'
 import { saveEvent } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
+import { SpeakerFacts } from '../components/SpeakerFacts.tsx'
 import { eventKeyOf, usesSignatureLayout } from '../lib/emails.ts'
+import { factsCounter } from '../lib/speakerFacts.ts'
 
 const MAX_FIELDS = 50 // the rules' cap
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -55,7 +57,7 @@ function SignatureEditor({ value, onChange }: { value: string; onChange: (html: 
   )
 }
 
-function EventForm({ initial, initialSignature }: { initial: EventField[]; initialSignature: string }) {
+function EventForm({ initial, initialSignature, initialFacts }: { initial: EventField[]; initialSignature: string; initialFacts: string }) {
   const { me } = useAuth()
   const admin = me?.role === 'admin'
   const { templates } = useData()
@@ -63,12 +65,15 @@ function EventForm({ initial, initialSignature }: { initial: EventField[]; initi
   const [rows, setRows] = useState(initial)
   const [baseSignature, setBaseSignature] = useState(initialSignature)
   const [signature, setSignature] = useState(initialSignature)
+  const [baseFacts, setBaseFacts] = useState(initialFacts)
+  const [facts, setFacts] = useState(initialFacts)
   const [label, setLabel] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  const dirty = JSON.stringify(base) !== JSON.stringify(rows) || baseSignature !== signature
+  const dirty = JSON.stringify(base) !== JSON.stringify(rows) || baseSignature !== signature || baseFacts !== facts
+  const factsOver = factsCounter(facts).over
   const usedBy = (key: string) => templates.filter((t) => fillInsIn(`${t.subject}\n${templateHtml(t)}`).includes(key)).map((t) => t.name)
   const newKey = eventKeyOf(label)
   const keyError = label.trim() === '' ? null : newKey === '' ? 'Use letters or digits in the label.' : validEventKey(newKey, rows.map((r) => r.key))
@@ -90,11 +95,12 @@ function EventForm({ initial, initialSignature }: { initial: EventField[]; initi
       const clean = rows.map((f) => ({ key: f.key, label: f.label.trim() || f.key, value: f.value.trim() }))
       // An emptied editor leaves "<p></p>"; store it as no signature.
       const sig = isBlankHtml(signature) ? '' : signature
-      await saveEvent(clean, sig, { uid: me!.uid, name: me!.name })
+      await saveEvent(clean, sig, facts, { uid: me!.uid, name: me!.name })
       setBase(clean)
       setRows(clean)
       setBaseSignature(sig)
       setSignature(sig)
+      setBaseFacts(facts)
       setSaved(true)
     } catch (e) {
       setError(`Couldn't save: ${errorText(e)}`)
@@ -113,7 +119,7 @@ function EventForm({ initial, initialSignature }: { initial: EventField[]; initi
         {admin && (
           <div className="actions">
             {saved && !dirty && <span className="stamp" role="status">Saved</span>}
-            <button className="btn primary" disabled={saving || !dirty} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="btn primary" disabled={saving || !dirty || factsOver} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         )}
       </div>
@@ -177,6 +183,7 @@ function EventForm({ initial, initialSignature }: { initial: EventField[]; initi
             )}
           </div>
         </section>
+        <SpeakerFacts admin={admin} value={facts} onChange={(v) => { setSaved(false); setFacts(v) }} />
       </div>
     </>
   )
@@ -187,7 +194,7 @@ export default function EventSettingsPage() {
   return (
     <>
       <EmailsTabs />
-      {loading ? <p className="muted">Loading…</p> : <EventForm initial={event?.fields ?? []} initialSignature={event?.signatureHtml ?? ''} />}
+      {loading ? <p className="muted">Loading…</p> : <EventForm initial={event?.fields ?? []} initialSignature={event?.signatureHtml ?? ''} initialFacts={event?.speakerFacts ?? ''} />}
     </>
   )
 }

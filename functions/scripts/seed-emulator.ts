@@ -9,7 +9,7 @@ import { fakeSheet } from '../src/testing/fakeRows.js';
 import { refreshAi } from '../src/ai/refreshAi.js';
 import { fakeAiClient } from '../src/testing/fakeAiClient.js';
 import { seedTemplates } from '../src/email/seedTemplates.js';
-import type { EmailDoc, EmailTemplate, ReceivedMessage, Role, StagesDoc, SpeakerStages, ThreadDoc } from '../src/model.js';
+import type { EmailDoc, EmailTemplate, ReceivedMessage, ReplyLabel, Role, StagesDoc, SpeakerStages, ThreadDoc } from '../src/model.js';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   throw new Error('Refusing to run: emulator host env vars are not set.');
@@ -71,6 +71,7 @@ async function seedEmail() {
       { key: 'eventDate', label: 'Event date', value: '1 December 2026' },
       { key: 'venue', label: 'Venue', value: 'Example Hall' },
     ],
+    speakerFacts: 'Emulator sample data.\nVenue: Example Hall, 1 Example Street. Doors open 09:00.\nSpeakers arrive by 08:30; lunch is provided.',
     signatureHtml: '<p><strong>DevFest Istanbul Speaker Team</strong><br>speakers@example.org</p>',
     updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
   });
@@ -78,6 +79,8 @@ async function seedEmail() {
   await db.doc('reviews/row-9').set({ status: 'approved', ...review });
   await db.doc('reviews/row-12').set({ status: 'declined', ...review });
   await db.doc('reviews/row-11').set({ status: 'approved', ...review });
+  // Grace's talk, which Alan co-presents: their acceptances below are for it.
+  await db.doc('reviews/row-5').set({ status: 'approved', ...review });
 
   const eventInfo: EmailTemplate = {
     name: 'Event info', rule: 'approved', stageId: null, attachments: [],
@@ -150,6 +153,24 @@ async function seedEmail() {
     text: 'Thanks, happy to be there! My slides outline is attached.', quoted: 'On an earlier day, DevFest Example wrote:\n> Hi Tim,',
     attachments: [{ id: 'seed-att-1', name: 'outline.pdf', size: 1234, mimeType: 'application/pdf' }],
   };
+  // Two more acceptances with replies for the reply assistant: Grace asks a question (AI reading and draft), Alan withdraws.
+  const acceptanceFor = (first: string, key: string, n: number, row: string): EmailDoc => ({
+    ...base, ...sent({ msAgo: 2 * DAY, gmailMessageId: `seed-msg-${n}`, threadId: `seed-thread-${n}` }),
+    batchId: 'seed-batch-acceptance', speakerKey: key, to: key, templateId: 'acceptance',
+    templateName: 'Acceptance', rule: 'acceptance', isDecision: true, talkIds: [row],
+    subject: 'You are speaking at DevFest Example 2026',
+    text: `Hi ${first},\n\nGood news: we would love to have you on stage at DevFest Example 2026.\n\nThe DevFest Example 2026 team`,
+    replyCount: 1, lastReplyAt: ts(3 * 60 * 60 * 1000),
+  });
+  const replyFrom = (key: string, text: string): ReceivedMessage => ({
+    kind: 'reply', from: key, to: [SENDER], cc: [], at: ts(3 * 60 * 60 * 1000), subject: 'Re: You are speaking at DevFest Example 2026',
+    text, quoted: '', attachments: [],
+  });
+  const grace = replyFrom('grace@example.com', 'Thank you! What time should I arrive on the day, and is there a speaker dinner?');
+  const alan = replyFrom('alan@example.com', 'Unfortunately I can no longer make it to the event, so I need to withdraw my talk.');
+  const reading = (messageId: string, label: ReplyLabel, p: number, rest: Record<ReplyLabel, number>, at = ts(3 * 60 * 60 * 1000 - 60_000)) => ({
+    messageId, label, probabilities: rest, confidence: p, model: 'fake-decision', at, error: null,
+  });
   const thread = (speakerKey: string, msgId: string, o: Partial<ThreadDoc>): ThreadDoc => ({
     speakerKey, firstSentAt: ts(2 * DAY), lastCheckedAt: ts(0), seenIds: [msgId], lastReplyAt: null,
     lastTeamAt: ts(2 * DAY), lastSnippet: '', ...o,
@@ -161,7 +182,28 @@ async function seedEmail() {
   batch.set(db.doc('emails/seed-question-donald'), scheduled);
   batch.set(db.doc('threads/seed-thread-1'), thread('tim@example.com', 'seed-msg-1', {
     seenIds: ['seed-msg-1', 'seed-reply-1'], lastReplyAt: reply.at, lastSnippet: reply.text,
+    // Cleared by AI: a thank-you needs no answer.
+    lastReplyId: 'seed-reply-1',
+    ai: reading('seed-reply-1', 'no_answer_needed', 0.97, { needs_answer: 0.01, no_answer_needed: 0.97, withdrawing: 0.0, unclear: 0.02 },
+      ts(DAY - 30_000)),
+    settled: { messageId: 'seed-reply-1', by: 'ai', byName: 'AI', at: ts(DAY - 60_000) },
   }));
+  batch.set(db.doc('emails/seed-acceptance-grace'), acceptanceFor('Grace', 'grace@example.com', 3, 'row-5'));
+  batch.set(db.doc('emails/seed-acceptance-alan'), acceptanceFor('Alan', 'alan@example.com', 4, 'row-5'));
+  batch.set(db.doc('threads/seed-thread-3'), thread('grace@example.com', 'seed-msg-3', {
+    seenIds: ['seed-msg-3', 'seed-reply-3'], lastReplyAt: grace.at, lastSnippet: grace.text, lastReplyId: 'seed-reply-3',
+    ai: reading('seed-reply-3', 'needs_answer', 0.91, { needs_answer: 0.91, no_answer_needed: 0.04, withdrawing: 0.01, unclear: 0.04 }),
+    draft: {
+      messageId: 'seed-reply-3', model: 'fake-draft', at: ts(3 * 60 * 60 * 1000 - 30_000),
+      text: 'Hi Grace,\n\nPlease arrive by 08:30 at Example Hall. Lunch is provided. [speaker dinner?]\n\nThe DevFest Example 2026 team',
+    },
+  }));
+  batch.set(db.doc('threads/seed-thread-3/messages/seed-reply-3'), grace);
+  batch.set(db.doc('threads/seed-thread-4'), thread('alan@example.com', 'seed-msg-4', {
+    seenIds: ['seed-msg-4', 'seed-reply-4'], lastReplyAt: alan.at, lastSnippet: alan.text, lastReplyId: 'seed-reply-4',
+    ai: reading('seed-reply-4', 'withdrawing', 0.88, { needs_answer: 0.06, no_answer_needed: 0.04, withdrawing: 0.88, unclear: 0.02 }),
+  }));
+  batch.set(db.doc('threads/seed-thread-4/messages/seed-reply-4'), alan);
   batch.set(db.doc('threads/seed-thread-1/messages/seed-reply-1'), reply);
   batch.set(db.doc('threads/seed-thread-2'), thread('hedy@example.com', 'seed-msg-2', { lastSnippet: decline.text!.slice(0, 140) }));
   batch.set(db.doc('meta/mail'), { lastSendAt: ts(2 * DAY), lastPollAt: ts(0), sendError: null, pollError: null });
