@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
-import { cleanEmailHtml } from '../../../functions/src/shared/emailHtml.ts'
 import { uploadEmailImage } from '../lib/emailImages.ts'
+import { syncEditorContent } from '../lib/editorSync.ts'
 
 type FillIn = { name: string; label: string }
 
@@ -35,9 +35,14 @@ export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
       Image,
     ],
     content: value,
+    // Create the editor in an effect, not during render. A render-time editor is destroyed by TipTap's 1 ms
+    // "not mounted yet" timer whenever the commit takes longer than that (StrictMode, a slow page), and the effects
+    // of that commit still see it: getHTML() then reads the destroyed editor's null schema and throws.
+    immediatelyRender: false,
+    // Pasted HTML is not cleaned here: the schema already keeps only what the editor supports, and the email is
+    // cleaned when it is rendered for sending. Cleaning here would drop the styles Google Docs uses for bold/normal.
     editorProps: {
       attributes: { 'aria-label': ariaLabel, role: 'textbox', 'aria-multiline': 'true' },
-      transformPastedHTML: (html) => cleanEmailHtml(html),
     },
     onUpdate: ({ editor: e }) => {
       onChange(e.getHTML())
@@ -46,9 +51,7 @@ export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
   })
 
   // Pull in outside changes only when they differ, so typing never moves the cursor.
-  useEffect(() => {
-    if (editor && value !== editor.getHTML()) editor.commands.setContent(value, { emitUpdate: false })
-  }, [value, editor])
+  useEffect(() => { syncEditorContent(editor, value) }, [value, editor])
 
   const active = useEditorState({
     editor,
@@ -69,7 +72,8 @@ export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
     return () => document.removeEventListener('mousedown', onDown)
   }, [fillOpen])
 
-  if (!editor || !active) return null
+  // Until the editor exists (the first render), the loading box LazyRichEditor shows stays in place.
+  if (!editor || !active) return <div className="rich rich-loading" aria-busy="true" aria-label={ariaLabel} />
 
   const openLink = () => {
     setUrl(editor.getAttributes('link').href ?? '')
