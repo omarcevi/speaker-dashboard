@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emails · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { esc, mailShell, emails, bySpeaker, speakerName, nameOf, stateChip, plural, sheet } = MAIL;
+const p = new URLSearchParams(location.search);
+const admin = p.get('member') !== '1';
+let filter = 'look';
+let open = null; // [speakerKey, threadId]
+let showQuoted = false;
+
+// "Needs a look": the speaker wrote last, or something went wrong.
+const needsLook = (e) => (e.last?.[0] === 'speaker') || e.bounced || e.state === 'held' || e.state === 'unknown';
+const FILTERS = [
+  ['look', 'Needs a look', needsLook],
+  ['all', 'All', () => true],
+  ['replied', 'Replied', (e) => e.replies],
+  ['bounced', 'Bounced', (e) => e.bounced],
+  ['scheduled', 'Scheduled', (e) => e.state === 'scheduled' || e.state === 'held'],
+];
+const order = (e) => ({ '23 Nov': 9, '22 Nov': 8, '21 Nov': 7, '20 Nov': 6, '19 Nov': 5, '18 Nov': 4, '15 Nov': 2, '12 Nov': 1, '2 Dec': 10 })[(e.last?.[1] ?? e.when).split(',')[0]] ?? 0;
+
+function lastLine(e) {
+  const sp = bySpeaker(e.speaker).sp;
+  if (e.last?.[0] === 'speaker') return `<div class="snippet"><b>${esc(sp.first)} replied</b> · ${esc(e.last[1])} · ${esc(e.last[2])}</div>`;
+  if (e.last?.[0] === 'team') return `<div class="snippet">Answered by the team · ${esc(e.last[1])} · ${esc(e.last[2])}</div>`;
+  if (e.bounced) return `<div class="snippet"><b>Not delivered</b> · ${esc(e.bounced)}</div>`;
+  if (e.state === 'held') return `<div class="snippet"><b>Held</b> · ${esc(e.reason)}</div>`;
+  if (e.state === 'unknown') return '<div class="snippet"><b>Check Gmail Sent</b> · the dashboard lost track mid-send</div>';
+  if (e.state === 'scheduled') return `<div class="snippet">Goes out ${esc(e.when)}</div>`;
+  if (e.state === 'manual') return '<div class="snippet">Sent outside the dashboard, marked by hand</div>';
+  return '<div class="snippet">No reply yet</div>';
+}
+
+function draw() {
+  const f = FILTERS.find((x) => x[0] === filter);
+  const rows = emails.filter(f[2]).sort((a, b) => order(b) - order(a));
+  mailShell(`
+    <div class="title-row">
+      <div><h1>Emails</h1><p class="lede">${plural(emails.filter((e) => e.state === 'sent').length, 'email')} sent from speakers@example.org · mailbox checked for replies 3 min ago</p></div>
+      ${admin ? '<div class="actions"><a class="btn" href="send.html?custom=1&s=priya">Custom email</a><a class="btn primary" href="templates.html">Send from a template</a></div>' : ''}
+    </div>
+    <div class="filterbar" role="group" aria-label="Show">${FILTERS.map(([k, l, fn]) => `<button aria-pressed="${k === filter}" data-f="${k}">${l} <span class="n num">${emails.filter(fn).length}</span></button>`).join('')}</div>
+    <div class="card table-card scroll-x">
+      ${rows.length ? `<table>
+        <thead><tr><th style="width:220px">Speaker</th><th>Email and latest</th><th style="width:170px">State</th><th style="width:170px">Sent</th></tr></thead>
+        <tbody>${rows.map((e) => {
+          const g = bySpeaker(e.speaker);
+          const can = !!e.thread;
+          return `<tr class="${can ? 'row' : ''}" ${can ? `data-open="${e.speaker}|${e.thread}"` : ''}>
+            <td><div class="cell-main"><a href="talk.html?s=${e.speaker}">${esc(speakerName(g.sp))}</a></div><div class="cell-sub">${esc(g.sp.company)}</div></td>
+            <td><div style="font-weight:500">${esc(nameOf(e))}</div>${lastLine(e)}</td>
+            <td>${stateChip(e)}</td>
+            <td><div>${esc(e.state === 'scheduled' || e.state === 'held' ? '—' : e.when)}</div><div class="cell-sub">${esc(e.by)}</div></td>
+          </tr>`;
+        }).join('')}</tbody></table>
+        <div class="table-foot"><span>Click a row to read the conversation. Replies also show on each speaker's talk page.</span><span>${plural(rows.length, 'email')}</span></div>`
+      : `<div class="empty"><b>${filter === 'look' ? 'Nothing needs a look' : 'No emails here'}</b>${filter === 'look' ? 'New replies, bounces and held emails show up here.' : ''}</div>`}
+    </div>
+    ${open ? sheet(open[0], open[1], { admin, showQuoted }) : ''}`, 'emails');
+}
+document.addEventListener('click', (e) => {
+  const fb = e.target.closest('[data-f]'); if (fb) { filter = fb.dataset.f; return draw(); }
+  if (e.target.closest('a')) return;
+  const r = e.target.closest('[data-open]'); if (r) { open = r.dataset.open.split('|'); showQuoted = false; return draw(); }
+  if (e.target.closest('[data-close]')) { open = null; return draw(); }
+  if (e.target.closest('[data-quoted]')) { showQuoted = true; return draw(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) { open = null; draw(); } });
+draw();
+</script>
+</body>
+</html>

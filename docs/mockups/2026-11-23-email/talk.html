@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talk emails · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { D, esc, I, initials, mailShell, templates, emails, tmpl, bySpeaker, speakerName, emailOf, statusPill, eligible, values } = MAIL;
+const p = new URLSearchParams(location.search);
+const key = p.get('s') ?? 'priya';
+const admin = p.get('member') !== '1';
+const g = bySpeaker(key);
+const sp = g.sp;
+const talk = g.talks.find((x) => x.status === 'approved') ?? g.talks[0];
+const mine = emails.filter((e) => e.speaker === key);
+const lastDecision = mine.find((e) => (e.state === 'sent' || e.state === 'manual') && ['acceptance', 'decline'].includes(tmpl(e.template)?.rule));
+let openThread = p.get('open');
+let showQuoted = false;
+let menu = false;
+
+const nameOf = (e) => e.template ? tmpl(e.template).name : e.subject;
+function histRow(e) {
+  const t = tmpl(e.template);
+  const title = e.thread ? `<button class="title" data-open="${e.thread}">${esc(nameOf(e))}</button>` : `<span class="title">${esc(nameOf(e))}</span>`;
+  const by = e.state === 'manual' ? `Marked by ${esc(e.by)} · ${esc(e.when)} · sent outside the dashboard`
+    : e.state === 'scheduled' ? `Scheduled by ${esc(e.by)}`
+    : `${esc(e.by)} · ${esc(e.when)}${e.cc ? ` · cc ${esc(e.cc.join(', '))}` : ''}`;
+  let extra = '';
+  if (e.state === 'held') extra = `<div class="alert notice"><span><b>Held on ${esc(e.when)}:</b> ${esc(e.reason)}.${admin ? ' Fix it, then send.' : ''}</span></div>${admin ? '<div class="acts"><a class="btn sm" href="event.html">Event settings</a><button class="btn sm primary">Send now</button><button class="btn sm text">Cancel</button></div>' : ''}`;
+  if (e.state === 'unknown') extra = `<div class="alert notice"><span>The dashboard lost track of this one mid-send. Check the mailbox's Sent folder before doing anything.</span></div>${admin ? '<div class="acts"><button class="btn sm">It was sent</button><button class="btn sm">It wasn\'t: send again</button></div>' : ''}`;
+  if (e.state === 'scheduled' && admin) extra = '<div class="acts"><button class="btn sm">Change time</button><button class="btn sm text">Cancel</button></div>';
+  if (e.bounced) extra = `<div class="sub">${esc(e.bounced)}</div>${admin ? '<div class="acts"><button class="btn sm">Send to another address…</button></div>' : ''}`;
+  return `<li>${title}${MAIL.stateChip(e)}<div class="sub">${by}</div>${extra}</li>`;
+}
+
+function draw() {
+  const others = ['priya', 'burak', 'gizem', 'ahmet'].filter((k) => k !== key);
+  mailShell(`
+    <div class="stepper"><a class="crumb" href="../2026-11-17-ui-refresh/index.html">${I.left}Submissions</a><span class="grow"></span>
+      <span class="hint">Mockup: see ${others.map((k) => `<a href="?s=${k}${admin ? '' : '&member=1'}">${esc(bySpeaker(k).sp.first)}</a>`).join(', ')} · <a href="?s=${key}${admin ? '&member=1' : ''}">${admin ? 'as a member' : 'as an admin'}</a></span></div>
+    <div class="object-wrap"><section class="card object" aria-label="Talk">
+      <div class="portrait" aria-hidden="true">${initials(speakerName(sp))}</div>
+      <div style="min-width:0"><h1>${esc(talk.title)}</h1>
+        <p class="meta"><span class="who">${esc(speakerName(sp))}</span><span>${esc(sp.job)}, ${esc(sp.company)}</span><span class="sep">·</span><span>${esc(talk.topic)}</span><span class="sep">·</span><span>${esc(talk.level)}</span></p>
+        ${lastDecision ? `<p class="meta" style="margin-top:6px">${I.mail}<span>Emailed: ${esc(tmpl(lastDecision.template).name)} · ${esc(lastDecision.when)}${lastDecision.bounced ? ' · <b style="font-weight:500;color:var(--text)">bounced</b>' : ''}</span></p>` : ''}</div>
+      <div class="verdict"><div><div class="control-label">Decision</div>${statusPill(talk.status)}</div></div>
+    </section></div>
+    <div class="talk-grid">
+      <div class="stack">
+        <section class="card pad"><div class="card-head"><h2>Abstract</h2></div><p class="prose" style="white-space:pre-line">${esc(talk.abstract)}</p></section>
+        <section class="card pad"><div class="card-head"><h2>Comments</h2></div><p class="muted">Unchanged from the UI refresh.</p></section>
+      </div>
+      <div class="stack">
+        <section class="card pad" aria-label="Speaker">
+          <div class="speaker-head"><div class="portrait" aria-hidden="true">${initials(speakerName(sp))}</div><div><b>${esc(speakerName(sp))}</b><span class="muted">${esc(sp.job)}, ${esc(sp.company)}</span></div></div>
+          <ul class="contact ruled"><li>${I.mail}<a href="mailto:${esc(sp.email)}">${esc(sp.email)}</a><button class="copy">Copy</button></li><li>${I.phone}<a href="#">${esc(sp.phone)}</a><button class="copy">Copy</button></li></ul>
+          <p class="muted" style="margin-top:12px;font-size:13px">Bio, experience and the rest as today.</p>
+        </section>
+        <section class="card pad" aria-label="Emails">
+          <div class="card-head"><h2>Emails</h2>${admin ? `<div style="position:relative"><button class="btn sm" id="menu" aria-expanded="${menu}">${I.mail}Email ${esc(sp.first)}</button>
+            ${menu ? `<div class="card" style="position:absolute;right:0;top:40px;z-index:5;width:240px;padding:6px;box-shadow:0 8px 24px -12px rgba(32,33,36,.35)"><ul class="who-list">${templates.map((t) => { const el = eligible(t, g); return `<li${el.ok ? '' : ' style="color:var(--faint)"'}><a style="text-decoration:none;flex:1" href="send.html?t=${t.id}${el.followUp ? `&follow=${key}` : ''}">${esc(t.name)}</a>${el.followUp ? '<span class="tag">Follow-up</span>' : el.ok ? '' : '<span class="hint">—</span>'}</li>`; }).join('')}<li style="border-top:1px solid var(--rule);border-radius:0;margin-top:4px;padding-top:10px"><a style="text-decoration:none;flex:1" href="send.html?custom=1&s=${key}">Custom email…</a></li></ul></div>` : ''}</div>` : ''}</div>
+          ${mine.length ? `<ul class="hist">${mine.map(histRow).join('')}</ul>` : '<p class="muted">No emails yet.</p>'}
+        </section>
+      </div>
+    </div>
+    ${MAIL.sheet(key, openThread, { admin, showQuoted })}`);
+}
+document.addEventListener('click', (e) => {
+  const o = e.target.closest('[data-open]'); if (o) { openThread = o.dataset.open; showQuoted = false; return draw(); }
+  if (e.target.closest('[data-close]')) { openThread = null; return draw(); }
+  if (e.target.closest('[data-quoted]')) { showQuoted = true; return draw(); }
+  if (e.target.closest('#menu')) { menu = !menu; return draw(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openThread) { openThread = null; draw(); } });
+draw();
+</script>
+</body>
+</html>

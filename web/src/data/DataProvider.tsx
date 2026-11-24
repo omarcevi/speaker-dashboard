@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
-import type { AdvocuMeta, AiDoc, AiMeta, Comment, Review, Score, Submission, SyncMeta, TopicMap } from '../../../functions/src/model.ts'
+import type { AdvocuMeta, AiDoc, AiMeta, Comment, EmailDoc, EmailTemplate, EventSettings, MailMeta, Review, Score, Submission, SyncMeta, ThreadDoc, TopicMap } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { db } from '../firebase.ts'
 import { buildCards, type Card } from '../lib/cards.ts'
@@ -18,6 +18,11 @@ interface DataValue {
   ai: Map<string, AiDoc>
   topicMap: TopicMap | null
   aiMeta: AiMeta | null
+  templates: (EmailTemplate & { id: string })[]
+  emails: (EmailDoc & { id: string })[]
+  threads: (ThreadDoc & { id: string })[]
+  event: EventSettings | null
+  mailMeta: MailMeta | null
   loading: boolean
   error: string | null
 }
@@ -34,6 +39,11 @@ const emptyLoaded: Loaded = {
   ai: new Map(),
   topicMap: null,
   aiMeta: null,
+  templates: [],
+  emails: [],
+  threads: [],
+  event: null,
+  mailMeta: null,
   error: null,
 }
 
@@ -52,7 +62,7 @@ function groupBySubmission<T extends { submissionId: string }>(snap: QuerySnapsh
   return map
 }
 
-const SOURCES = 9
+const SOURCES = 14
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { me } = useAuth()
@@ -112,6 +122,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData((p) => ({ ...p, aiMeta: snap.exists() ? (snap.data() as AiMeta) : null }))
         markReady('aiMeta')
       }, fail('aiMeta')),
+      onSnapshot(collection(db, 'templates'), (snap) => {
+        const templates = snap.docs.map((d) => ({ ...(d.data() as EmailTemplate), id: d.id }))
+        setData((p) => ({ ...p, templates }))
+        markReady('templates')
+      }, fail('templates')),
+      onSnapshot(collection(db, 'emails'), (snap) => {
+        const emails = snap.docs.map((d) => ({ ...(d.data() as EmailDoc), id: d.id }))
+        setData((p) => ({ ...p, emails }))
+        markReady('emails')
+      }, fail('emails')),
+      onSnapshot(collection(db, 'threads'), (snap) => {
+        const threads = snap.docs.map((d) => ({ ...(d.data() as ThreadDoc), id: d.id }))
+        setData((p) => ({ ...p, threads }))
+        markReady('threads')
+      }, fail('threads')),
+      onSnapshot(doc(db, 'meta', 'event'), (snap) => {
+        setData((p) => ({ ...p, event: snap.exists() ? (snap.data() as EventSettings) : null }))
+        markReady('event')
+      }, fail('event')),
+      onSnapshot(doc(db, 'meta', 'mail'), (snap) => {
+        setData((p) => ({ ...p, mailMeta: snap.exists() ? (snap.data() as MailMeta) : null }))
+        markReady('mailMeta')
+      }, fail('mailMeta')),
     ]
     return () => {
       unsubs.forEach((u) => u())

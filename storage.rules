@@ -6,6 +6,15 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['member', 'admin'];
       allow write: if false;
     }
+    match /emailAttachments/{templateId}/{file} {
+      allow read: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['member', 'admin'];
+      allow write: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

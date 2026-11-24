@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Score, Status } from '../../../functions/src/model.ts'
 import type { Actor } from '../data/actions.ts'
+import { useData } from '../data/DataProvider.tsx'
 import type { Card } from '../lib/cards.ts'
+import { emailedLine, lastDecisionEmail } from '../lib/emails.ts'
 import DecisionBar from './DecisionBar.tsx'
+import { IconMail } from './Icons.tsx'
 import ScoreBar from './ScoreBar.tsx'
 import SourceBadge from './SourceBadge.tsx'
 import SpeakerPhoto from './SpeakerPhoto.tsx'
@@ -30,6 +33,10 @@ export default function TalkHeader({ card, status, scores, me, showAll, admin, t
     io.observe(el)
     return () => io.disconnect()
   }, [])
+
+  // The room should know what the speaker was told: the last decision email that went out (members see it too).
+  const { emails } = useData()
+  const emailed = useMemo(() => lastDecisionEmail(emails.filter((e) => e.speakerKey === card.speakerKey)), [emails, card.speakerKey])
 
   const name = `${card.firstName} ${card.lastName}`.trim()
   const role = [card.jobTitle, card.company].filter(Boolean).join(', ')
@@ -64,6 +71,11 @@ export default function TalkHeader({ card, status, scores, me, showAll, admin, t
                 </span>
               )}
             </p>
+            {emailed && (
+              <p className="meta emailed">
+                <IconMail /><span>{emailedLine(emailed)}{emailed.bounce && <> · <b>bounced</b></>}</span>
+              </p>
+            )}
           </div>
           <div className="verdict">
             <ScoreBar key={`score-${card.id}`} submissionId={card.id} scores={scores} me={me} showAll={showAll} />

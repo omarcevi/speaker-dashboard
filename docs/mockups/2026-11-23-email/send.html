@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { esc, I, mailShell, RULES, templates, speakers, emails, eligible, values, render, problems, plural, statusPill, speakerName, emailOf, bySpeaker, decision } = MAIL;
+const p = new URLSearchParams(location.search);
+const custom = p.get('custom') === '1';
+const followKey = p.get('follow');
+const t = custom ? { id: null, name: 'Custom email', rule: 'anyone', subject: '', body: 'Hi {{firstName}},\n\n', attachments: [] } : templates.find((x) => x.id === p.get('t')) ?? templates[0];
+const decisionTmpl = t.rule === 'acceptance' || t.rule === 'decline';
+
+const S = { step: followKey || custom ? 2 : 1, tab: 'ready', sel: new Set(), at: 0, cc: true, when: 'now', date: '2026-12-02', time: '09:00', tested: false, sentStates: null };
+const status = speakers.map((g) => ({ g, e: eligible(t, g, false) }));
+const ready = status.filter((x) => x.e.ok);
+const follow = status.filter((x) => x.e.followUp);
+const notReady = status.filter((x) => !x.e.ok && !x.e.followUp);
+for (const x of ready) S.sel.add(x.g.key);
+if (followKey) { S.sel = new Set([followKey]); }
+if (custom) { S.sel = new Set([p.get('s') ?? 'priya']); }
+const firstEver = decisionTmpl && !emails.some((e) => e.template === t.id && e.state === 'sent');
+
+function recipients() {
+  return [...S.sel].map((k) => {
+    const g = bySpeaker(k);
+    const e = followKey ? eligible(t, g, false) : custom ? { ok: true, talks: g.talks } : eligible(t, g);
+    const talks = e.talks ?? g.talks;
+    const v = values(g, talks);
+    const pr = problems(t, v);
+    return { g, talks, v, blocked: [...pr.unknown, ...pr.empty], cc: talks.map((x) => x.coSpeaker?.email).filter(Boolean) };
+  });
+}
+
+function stepsBar() {
+  const names = custom ? ['Write', 'When'] : followKey ? ['Preview', 'When'] : ['Choose speakers', 'Preview', 'When'];
+  const offset = custom || followKey ? 2 : 1;
+  return `<ol class="steps">${names.map((n, i) => { const k = i + offset; return `<li${S.step === k ? ' aria-current="step"' : ''}${S.step > k ? ' class="done"' : ''}><b>${S.step > k ? '✓' : i + 1}</b>${n}</li>`; }).join('')}</ol>`;
+}
+
+function step1() {
+  const tabs = decisionTmpl
+    ? [['ready', 'Ready', ready], ['follow', 'Needs a follow-up', follow], ['not', 'Not ready', notReady]]
+    : [['ready', 'Can get it', ready], ['not', "Can't get it", notReady]];
+  const list = { ready, follow, not: notReady }[S.tab];
+  const rows = list.map(({ g, e }) => {
+    const on = S.tab === 'ready';
+    const talks = e.talks ?? g.talks.filter((x) => x.status === 'approved');
+    return `<tr class="${on ? '' : 'off'}">
+      <td style="width:44px">${on ? `<input type="checkbox" class="check" data-pick="${g.key}"${S.sel.has(g.key) ? ' checked' : ''} aria-label="Include ${esc(speakerName(g.sp))}">` : ''}</td>
+      <td><div class="cell-main">${esc(speakerName(g.sp))}</div><div class="cell-sub">${esc(g.sp.company)}</div></td>
+      <td>${g.talks.map((x) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">${statusPill(x.status)}<span class="clip" style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.title)}</span></div>`).join('')}</td>
+      <td>${S.tab === 'follow' ? `<div class="why">${esc(e.why)}: got the Decline on 12 Nov, now approved.</div><a class="btn sm" style="margin-top:6px" href="send.html?t=${t.id}&follow=${g.key}">Send follow-up…</a>`
+        : on ? (talks.some((x) => x.coSpeaker) ? `<span class="why">Cc ${esc(talks.find((x) => x.coSpeaker).coSpeaker.first)} (co-speaker)</span>` : '<span class="dash">—</span>') : `<span class="why">${esc(e.why)}</span>`}</td>
+    </tr>`;
+  }).join('');
+  return `
+    ${firstEver && S.tab === 'ready' ? `<div class="notice" style="margin-top:16px"><span><b>First ${esc(t.name)} send from the dashboard.</b> Have some of these speakers already been emailed outside it? Tick them and mark them, so they don't get it twice.</span><button class="btn sm" style="margin-left:auto" id="mark">Mark ticked as already emailed</button></div>` : ''}
+    <div class="card table-card scroll-x">
+      <div class="tabs" role="tablist">${tabs.map(([k, l, arr]) => `<button role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l} <span class="n num">${arr.length}</span></button>`).join('')}</div>
+      ${list.length ? `<table><thead><tr><th></th><th style="width:220px">Speaker</th><th>Talks</th><th style="width:260px">${S.tab === 'ready' ? 'Also gets it' : 'Why'}</th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<div class="empty"><b>${S.tab === 'follow' ? 'No follow-ups needed' : 'Nobody here'}</b>${S.tab === 'follow' ? 'Speakers whose decision changed after their email show up here.' : ''}</div>`}
+    </div>
+    <div class="actionbar"><span><b class="num">${S.sel.size}</b> of ${ready.length} selected</span><span class="grow"></span>
+      <a class="btn text" href="templates.html">Cancel</a><button class="btn primary" data-go="2"${S.sel.size ? '' : ' disabled'}>Preview ${plural(S.sel.size, 'email')}</button></div>`;
+}
+
+function mailView(r) {
+  return `<div class="mail"><dl class="mail-h">
+    <dt>To</dt><dd>${esc(speakerName(r.g.sp))} &lt;${esc(emailOf(r.g.sp))}&gt;</dd>
+    ${r.cc.length && S.cc ? `<dt>Cc</dt><dd>${r.cc.map(esc).join(', ')}</dd>` : ''}
+    <dt>Subject</dt><dd class="subj">${render(t.subject, r.v)}</dd></dl>
+    <div class="mail-b">${render(t.body, r.v)}</div>
+    ${t.attachments.length ? `<div class="mail-att">${t.attachments.map((a) => `<span class="att">${esc(a.name)} <span class="muted">${esc(a.size)}</span></span>`).join('')}</div>` : ''}</div>`;
+}
+
+function step2() {
+  const rs = recipients();
+  const r = rs[Math.min(S.at, rs.length - 1)];
+  const blocked = rs.filter((x) => x.blocked.length);
+  const anyCc = rs.some((x) => x.cc.length);
+  if (custom) {
+    return `<div class="editor">
+      <section class="card pad"><div class="field"><span class="label">To</span><div>${esc(speakerName(r.g.sp))} · ${esc(r.g.sp.company)}</div></div>
+        <div class="field"><label for="subject">Subject</label><input class="input" id="subject" value="${esc(t.subject)}" placeholder="Subject"></div>
+        <div class="field"><label for="body">Message</label><textarea class="area" id="body">${esc(t.body)}</textarea><span class="hint">Fill-ins work here too. This email isn't saved as a template.</span></div></section>
+      <section class="card pad"><div class="preview-head"><h2>Preview</h2><button class="btn sm" id="test">${S.tested ? 'Test sent to you ✓' : 'Send test to me'}</button></div>${mailView(r)}</section>
+    </div>
+    <div class="actionbar"><span class="grow"></span><a class="btn text" href="talk.html">Cancel</a><button class="btn primary" data-go="3"${t.subject.trim() ? '' : ' disabled'}>Next: when to send</button></div>`;
+  }
+  return `
+    ${followKey ? `<div class="notice" style="margin-top:16px"><span><b>Follow-up for ${esc(speakerName(r.g.sp))}.</b> They got the Decline on 12 Nov. This ${esc(t.name)} lists only the talk approved since then.</span></div>` : ''}
+    ${blocked.length ? `<div class="notice" style="margin-top:16px"><span><b>${plural(blocked.length, 'email')} can't send yet.</b> ${blocked.map((x) => `${esc(x.g.sp.first)}: {{${x.blocked.map(esc).join('}}, {{')}}} is empty`).join(' · ')}. <a href="event.html">Fix in Event settings</a> or untick them.</span></div>` : ''}
+    <div class="preview-grid">
+      <section class="card pad" aria-label="Recipients"><div class="card-head"><h2>${plural(rs.length, 'email')}</h2></div>
+        <ul class="who-list">${rs.map((x, i) => `<li data-at="${i}" aria-current="${i === S.at}"><span>${esc(speakerName(x.g.sp))}</span>${x.blocked.length ? '<span class="mstate warn">Blocked</span>' : x.cc.length && S.cc ? '<span class="tag">+ Cc</span>' : ''}</li>`).join('')}</ul>
+        ${anyCc ? `<label class="switch" style="margin-top:16px"><input type="checkbox" id="cc"${S.cc ? ' checked' : ''}><span class="track"></span>Cc co-speakers</label>` : ''}
+      </section>
+      <section class="card pad" aria-label="Preview">
+        <div class="preview-head"><div class="seg"><button data-step-at="-1" aria-label="Previous">${I.left}</button><button data-step-at="1" aria-label="Next">${I.right}</button></div>
+          <span class="muted num">${S.at + 1} of ${rs.length}</span><span style="flex:1"></span>
+          <button class="btn sm" id="test">${S.tested ? 'Test sent to you ✓' : 'Send test to me'}</button></div>
+        ${mailView(r)}
+      </section>
+    </div>
+    <div class="actionbar"><span>${blocked.length ? `${rs.length - blocked.length} will send · ${blocked.length} blocked` : plural(rs.length, 'email') + ' ready'}</span><span class="grow"></span>
+      ${followKey ? '<a class="btn text" href="send.html?t=acceptance">Back</a>' : '<button class="btn text" data-go="1">Back</button>'}<button class="btn primary" data-go="3">Next: when to send</button></div>`;
+}
+
+function step3() {
+  const n = recipients().filter((x) => !x.blocked.length).length;
+  const label = S.when === 'now' ? `Send to ${plural(n, 'speaker')}` : `Schedule for ${plural(n, 'speaker')}`;
+  return `<section class="card pad" style="margin-top:16px;max-width:640px">
+      <div class="when">
+        <label class="radio-card"><input type="radio" name="when" value="now"${S.when === 'now' ? ' checked' : ''}><b>Send now</b><span class="sub">Goes out within a minute, exactly as previewed.</span></label>
+        <label class="radio-card"><input type="radio" name="when" value="later"${S.when === 'later' ? ' checked' : ''}><b>Schedule</b><span class="sub">Written at send time, so event-setting changes made before then are used. If a speaker no longer qualifies, their email is held for you to check.</span>
+          <span class="inline"><input class="input" type="date" id="date" value="${S.date}" aria-label="Date"><input class="input" type="time" id="time" value="${S.time}" aria-label="Time"><span class="hint">Istanbul time</span></span></label>
+      </div>
+      <p class="hint" style="margin-top:16px">From speakers@example.org. It shows up in that mailbox's Sent folder, and replies arrive there and on each speaker's talk page.</p>
+    </section>
+    <div class="actionbar" style="max-width:640px"><span class="grow"></span><button class="btn text" data-go="2">Back</button><button class="btn primary" id="send">${label}</button></div>`;
+}
+
+function step4() {
+  const rs = recipients().filter((x) => !x.blocked.length);
+  return `<section class="card pad" style="margin-top:16px;max-width:640px">
+    <div class="card-head"><h2>${S.when === 'now' ? 'Sending' : 'Scheduled'}</h2><span class="muted">${S.when === 'now' ? 'You can leave this page' : `${S.date.split('-').reverse().join('.')} at ${S.time}`}</span></div>
+    <ul class="hist">${rs.map((x, i) => `<li><span>${esc(speakerName(x.g.sp))}</span>${S.when === 'now' ? (S.sentStates[i] ? '<span class="mstate">Sent</span>' : '<span class="mstate line">Sending…</span>') : `<span class="mstate line">Scheduled</span>`}</li>`).join('')}</ul>
+    </section>
+    <div class="actionbar" style="max-width:640px"><span class="grow"></span><a class="btn" href="templates.html">Back to templates</a><a class="btn primary" href="talk.html">Open a speaker</a></div>`;
+}
+
+function draw() {
+  const head = custom ? 'Custom email' : `Send: ${t.name}`;
+  const sub = custom ? 'A one-off email to one speaker. Sent like any other, and kept in their history.' : RULES[t.rule][1];
+  const body = { 1: step1, 2: step2, 3: step3, 4: step4 }[S.step]();
+  mailShell(`
+    <div class="stepper"><a class="crumb" href="${custom ? 'talk.html' : 'templates.html'}">${I.left}${custom ? esc(speakerName(bySpeaker([...S.sel][0]).sp)) : 'Templates'}</a></div>
+    <div class="title-row" style="margin-top:12px"><div><h1>${esc(head)}</h1><p class="lede">${esc(sub)}</p></div>
+      ${custom ? '' : `<div class="actions"><a class="btn" href="template.html?t=${t.id}">Edit template</a></div>`}</div>
+    ${S.step < 4 ? stepsBar() : ''}
+    ${body}`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-go]'); if (b && !b.disabled) { S.step = Number(b.dataset.go); S.at = 0; return draw(); }
+  const tb = e.target.closest('[data-tab]'); if (tb) { S.tab = tb.dataset.tab; return draw(); }
+  const a = e.target.closest('[data-at]'); if (a) { S.at = Number(a.dataset.at); return draw(); }
+  const st = e.target.closest('[data-step-at]'); if (st) { const n = recipients().length; S.at = (S.at + Number(st.dataset.stepAt) + n) % n; return draw(); }
+  if (e.target.id === 'test') { S.tested = true; return draw(); }
+  if (e.target.id === 'mark') { e.target.textContent = 'Marked'; e.target.disabled = true; return; }
+  if (e.target.id === 'send') {
+    S.step = 4; S.sentStates = []; draw();
+    if (S.when === 'now') recipients().forEach((_, i) => setTimeout(() => { S.sentStates[i] = true; draw(); }, 700 + i * 600));
+  }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.dataset.pick) { e.target.checked ? S.sel.add(e.target.dataset.pick) : S.sel.delete(e.target.dataset.pick); return draw(); }
+  if (e.target.id === 'cc') { S.cc = e.target.checked; return draw(); }
+  if (e.target.name === 'when') { S.when = e.target.value; return draw(); }
+  if (e.target.id === 'date') S.date = e.target.value;
+  if (e.target.id === 'time') S.time = e.target.value;
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'subject' || e.target.id === 'body') {
+    t[e.target.id] = e.target.value;
+    const r = recipients()[0];
+    document.querySelector('.mail').outerHTML = mailView(r);
+    document.querySelector('[data-go="3"]').disabled = !t.subject.trim();
+  }
+});
+draw();
+</script>
+</body>
+</html>

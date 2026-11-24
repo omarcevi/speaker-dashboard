@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { esc, mailShell, RULES, templates, emails, speakers, eligible, plural, problems, values, event } = MAIL;
+const confirming = {};
+
+function row(t) {
+  const sent = emails.filter((e) => e.template === t.id && (e.state === 'sent' || e.state === 'manual')).length;
+  const scheduled = emails.filter((e) => e.template === t.id && e.state === 'scheduled').length;
+  const ready = speakers.filter((g) => eligible(t, g).ok).length;
+  const emptyEvent = problems(t, values(speakers[0], [])).empty.filter((n) => event.some((f) => f.key === n));
+  const acts = confirming[t.id]
+    ? `<span class="acts" style="display:flex;gap:6px;align-items:center"><span>Delete ${esc(t.name)}?</span><button class="btn sm" data-yes="${t.id}">Delete</button><button class="btn sm text" data-no="${t.id}">Cancel</button></span>`
+    : `<span style="display:flex;gap:6px;justify-content:flex-end"><a class="btn sm primary" href="send.html?t=${t.id}">Send…</a><button class="btn sm text">Duplicate</button><button class="btn sm text" data-del="${t.id}">Delete</button></span>`;
+  return `<tr class="row" data-href="template.html?t=${t.id}">
+    <td><div class="cell-main"><a href="template.html?t=${t.id}">${esc(t.name)}</a></div>
+      <div class="cell-sub">${esc(t.subject.replace(/\{\{\s*(\w+)\s*\}\}/g, '…'))}${t.attachments.length ? ` · ${plural(t.attachments.length, 'attachment')}` : ''}</div>
+      ${emptyEvent.length ? `<div class="cell-sub"><span class="warn-line">Event setting ${emptyEvent.map((n) => `<b>${esc(n)}</b>`).join(', ')} is empty</span></div>` : ''}</td>
+    <td>${esc(RULES[t.rule][0])}</td>
+    <td class="n num">${sent}${scheduled ? `<div class="cell-sub" style="justify-content:flex-end">${scheduled} scheduled</div>` : ''}</td>
+    <td class="n num">${ready}</td>
+    <td><div>${esc(t.edited[1])}</div><div class="cell-sub">${esc(t.edited[0])}</div></td>
+    <td>${acts}</td>
+  </tr>`;
+}
+
+function render() {
+  mailShell(`
+    <div class="title-row">
+      <div><h1>Templates</h1><p class="lede">${plural(templates.length, 'template')} · emails go from speakers@example.org</p></div>
+      <div class="actions"><a class="btn" href="send.html?custom=1">Custom email</a><a class="btn primary" href="template.html?new=1">New template</a></div>
+    </div>
+    <div class="card table-card scroll-x" style="margin-top:24px">
+      <table>
+        <thead><tr><th>Template</th><th style="width:170px">Who gets it</th><th class="n" style="width:80px">Sent</th><th class="n" style="width:100px">Ready now</th><th style="width:170px">Last edited</th><th style="width:250px"><span class="vh">Actions</span></th></tr></thead>
+        <tbody>${templates.map(row).join('')}</tbody>
+      </table>
+      <div class="table-foot"><span>Mailbox checked for replies 3 min ago</span><span>${plural(emails.filter((e) => e.state === 'sent').length, 'email')} sent from the dashboard</span></div>
+    </div>`, 'templates');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button, a');
+  if (b?.dataset.del) { confirming[b.dataset.del] = true; return render(); }
+  if (b?.dataset.no) { delete confirming[b.dataset.no]; return render(); }
+  if (b?.dataset.yes) { templates.splice(templates.findIndex((t) => t.id === b.dataset.yes), 1); return render(); }
+  if (b) return;
+  const r = e.target.closest('tr[data-href]');
+  if (r) location.href = r.dataset.href;
+});
+render();
+</script>
+</body>
+</html>

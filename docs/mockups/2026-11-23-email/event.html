@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event settings · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="mail.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="mail.js"></script>
+<script>
+const { esc, I, mailShell, event, templates, fillsIn, SPEAKER_FILLS } = MAIL;
+const usedBy = (k) => templates.filter((t) => fillsIn(t.subject + t.body).includes(k)).map((t) => t.name);
+
+function render() {
+  const rows = event.map((f, i) => {
+    const used = usedBy(f.key);
+    return `<input class="input" aria-label="Label" value="${esc(f.label)}" data-i="${i}" data-k="label">
+      <code>{{${esc(f.key)}}}</code>
+      <div><input class="input" aria-label="${esc(f.label)} value" value="${esc(f.value)}" placeholder="Empty: emails that use it won't send" data-i="${i}" data-k="value">
+        ${used.length ? `<div class="hint" style="margin-top:4px">Used in ${used.map(esc).join(', ')}</div>` : ''}</div>
+      <button class="icon-btn" aria-label="Remove ${esc(f.label)}" data-rm="${i}" style="margin:0">×</button>`;
+  }).join('');
+  mailShell(`
+    <div class="title-row">
+      <div><h1>Event settings</h1><p class="lede">Values any template can use. Change one here and every future email uses the new value; sent emails keep what they said.</p></div>
+      <div class="actions"><button class="btn primary">Save</button></div>
+    </div>
+    <div class="settings">
+      <section class="setting">
+        <div class="about"><h2>Event details</h2><p>Leave a value empty until you know it. A template that needs it shows a warning and won't send.</p></div>
+        <div class="card pad">
+          <div class="event-rows">
+            <span class="head">Label</span><span class="head">Fill-in</span><span class="head">Value</span><span></span>
+            ${rows}
+          </div>
+          <form id="add" class="event-rows" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--rule)">
+            <input class="input" id="newLabel" placeholder="New setting, e.g. Wi-Fi password" aria-label="New setting label">
+            <code id="newKey">{{…}}</code>
+            <span class="hint" id="keyErr"></span>
+            <button class="btn sm" style="width:auto;padding:0 10px" type="submit">Add</button>
+          </form>
+        </div>
+      </section>
+    </div>`, 'event');
+}
+const keyOf = (l) => l.trim().toLowerCase().replace(/[^a-z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : '')).replace(/^[^a-z]+/, '');
+function check() {
+  const k = keyOf(document.getElementById('newLabel').value);
+  document.getElementById('newKey').textContent = k ? `{{${k}}}` : '{{…}}';
+  document.getElementById('keyErr').textContent = !k ? '' : SPEAKER_FILLS.includes(k) ? 'That name is taken by a speaker fill-in' : event.some((f) => f.key === k) ? 'Already exists' : '';
+}
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'newLabel') return check();
+  if (e.target.dataset.i) event[e.target.dataset.i][e.target.dataset.k] = e.target.value;
+});
+document.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const l = document.getElementById('newLabel').value; const k = keyOf(l);
+  if (!k || document.getElementById('keyErr').textContent) return;
+  event.push({ key: k, label: l.trim(), value: '' }); render();
+});
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { event.splice(Number(b.dataset.rm), 1); render(); } });
+render();
+</script>
+</body>
+</html>

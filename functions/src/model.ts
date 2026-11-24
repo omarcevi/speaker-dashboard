@@ -76,3 +76,40 @@ export interface TopicMap {
   generatedAt: Ts | null; error: string | null;
 } // meta/topicMap
 export interface AiMeta { lastRunAt: Ts | null; generated: number; pending: number; error: string | null } // meta/ai
+
+// Speaker email. Types only: the web bundles this file.
+export type RecipientRule = 'acceptance' | 'decline' | 'approved' | 'anyone'
+export interface TemplateAttachment { path: string; name: string; size: number; contentType: string }
+export interface EmailTemplate {
+  name: string; subject: string; body: string; attachments: TemplateAttachment[]; rule: RecipientRule; stageId: string | null;
+  updatedAt: Ts; updatedBy: string; updatedByName: string;
+} // templates/{id}
+export interface EventField { key: string; label: string; value: string }
+export interface EventSettings { fields: EventField[]; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/event
+export type EmailState = 'scheduled' | 'queued' | 'sending' | 'sent' | 'failed' | 'unknown' | 'held' | 'cancelled'
+// emails/{id}. subject and text stay null until rendered, for scheduled emails.
+export interface EmailDoc {
+  batchId: string; speakerKey: string; to: string; cc: string[]; templateId: string | null; templateName: string;
+  rule: RecipientRule; isDecision: boolean; talkIds: string[]; subject: string | null; text: string | null;
+  attachments: TemplateAttachment[]; sendAt: Ts; state: EmailState; reason: string | null; manual: boolean;
+  replyToThreadId: string | null; gmailMessageId: string | null; threadId: string | null; rfcMessageId: string | null;
+  claimedAt: Ts | null; sentAt: Ts | null; bounce: { reason: string; at: Ts } | null; replyCount: number;
+  lastReplyAt: Ts | null; by: string; byName: string; createdAt: Ts;
+  // What a scheduled email is written from at send time: the follow-up and CC choices, and a custom email's source
+  // (template emails re-read their template). Absent on manual entries.
+  request?: { followUp: boolean; includeCc: boolean; custom: { subject: string; body: string } | null };
+}
+// threads/{threadId}. lastTeamAt = latest of our sends and `team` messages; lastSnippet = first 140 chars of the newest message's text.
+export interface ThreadDoc {
+  speakerKey: string; firstSentAt: Ts; lastCheckedAt: Ts | null; seenIds: string[]; lastReplyAt: Ts | null;
+  lastTeamAt: Ts | null; lastSnippet: string;
+}
+// threads/{threadId}/messages/{gmailId}
+export interface ReceivedMessage {
+  kind: 'reply' | 'bounce' | 'team'; from: string; to: string[]; cc: string[]; at: Ts; subject: string; text: string; quoted: string;
+  attachments: { id: string; name: string; size: number; mimeType: string }[];
+  /** Set when text, quoted, subject, to/cc or attachments were cut to fit the stored limits. */
+  truncated?: boolean;
+}
+// meta/mail. Ruling 14: sendError is written only by the send run and pollError only by the reply check.
+export interface MailMeta { lastPollAt: Ts | null; lastSendAt: Ts | null; sendError: string | null; pollError: string | null }

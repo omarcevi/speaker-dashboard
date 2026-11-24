@@ -1,6 +1,8 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
-import type { Role, Status } from '../../../functions/src/model.ts'
-import { db } from '../firebase.ts'
+import { ref as storageRef, uploadBytes } from 'firebase/storage'
+import type { EmailTemplate, EventField, RecipientRule, Role, Status, TemplateAttachment } from '../../../functions/src/model.ts'
+import { db, storage } from '../firebase.ts'
+import { displayFileName, safeFileName } from '../lib/emails.ts'
 
 export interface Actor { uid: string; name: string }
 
@@ -53,4 +55,42 @@ export async function deleteComment(commentId: string): Promise<void> {
 
 export async function setRole(uid: string, role: Role): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { role })
+}
+
+export type TemplateInput = Pick<EmailTemplate, 'name' | 'subject' | 'body' | 'attachments'> & { rule: RecipientRule }
+
+// Creates with an auto id when `id` is null; returns the id. Templates are not tied to a stage yet.
+export async function saveTemplate(id: string | null, t: TemplateInput, me: Actor): Promise<string> {
+  const tref = id === null ? doc(collection(db, 'templates')) : doc(db, 'templates', id)
+  await setDoc(tref, {
+    name: t.name,
+    subject: t.subject,
+    body: t.body,
+    attachments: t.attachments,
+    rule: t.rule,
+    stageId: null,
+    updatedAt: serverTimestamp(),
+    updatedBy: me.uid,
+    updatedByName: me.name,
+  })
+  return tref.id
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'templates', id))
+}
+
+// A fresh id for a template not saved yet, so its attachments have a folder before the first save.
+export const newTemplateId = (): string => doc(collection(db, 'templates')).id
+
+export async function uploadTemplateAttachment(templateId: string, file: File): Promise<TemplateAttachment> {
+  // Only the Storage path is made safe; the name people see keeps its letters (the backend encodes non-ASCII names).
+  const path = `emailAttachments/${templateId}/${Date.now()}-${safeFileName(file.name)}`
+  const name = displayFileName(file.name)
+  await uploadBytes(storageRef(storage, path), file, { contentType: file.type || 'application/octet-stream' })
+  return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
+}
+
+export async function saveEvent(fields: EventField[], me: Actor): Promise<void> {
+  await setDoc(doc(db, 'meta', 'event'), { fields, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
 }
