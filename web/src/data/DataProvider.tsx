@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { collection, doc, onSnapshot, type QuerySnapshot } from 'firebase/firestore'
-import type { AdvocuMeta, AiDoc, AiMeta, Comment, EmailDoc, EmailTemplate, EventSettings, MailMeta, Review, Score, Submission, SyncMeta, ThreadDoc, TopicMap } from '../../../functions/src/model.ts'
+import type { AdvocuMeta, AiDoc, AiMeta, Comment, EmailDoc, EmailTemplate, EventSettings, MailMeta, Review, Score, Stage, Submission, SyncMeta, ThreadDoc, TopicMap } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { db } from '../firebase.ts'
 import { buildCards, type Card } from '../lib/cards.ts'
+import { readExceptions, readStages, type Exceptions } from '../lib/stages.ts'
 
 type CommentWithId = Comment & { id: string }
 
@@ -25,6 +26,10 @@ interface DataValue {
   /** The team signature added to every email; '' when none. */
   signatureHtml: string
   mailMeta: MailMeta | null
+  /** The email stages from `meta/stages`; [] when none are set up. */
+  stages: Stage[]
+  /** Per-speaker skipped / added stages, by speaker key. */
+  speakerStages: Map<string, Exceptions>
   loading: boolean
   error: string | null
 }
@@ -46,6 +51,8 @@ const emptyLoaded: Loaded = {
   threads: [],
   event: null,
   mailMeta: null,
+  stages: [],
+  speakerStages: new Map(),
   error: null,
 }
 
@@ -64,7 +71,7 @@ function groupBySubmission<T extends { submissionId: string }>(snap: QuerySnapsh
   return map
 }
 
-const SOURCES = 14
+const SOURCES = 16
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { me } = useAuth()
@@ -147,6 +154,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData((p) => ({ ...p, mailMeta: snap.exists() ? (snap.data() as MailMeta) : null }))
         markReady('mailMeta')
       }, fail('mailMeta')),
+      onSnapshot(doc(db, 'meta', 'stages'), (snap) => {
+        setData((p) => ({ ...p, stages: readStages(snap.data()) }))
+        markReady('stages')
+      }, fail('stages')),
+      onSnapshot(collection(db, 'speakerStages'), (snap) => {
+        const speakerStages = new Map(snap.docs.map((d) => [d.id, readExceptions(d.data())]))
+        setData((p) => ({ ...p, speakerStages }))
+        markReady('speakerStages')
+      }, fail('speakerStages')),
     ]
     return () => {
       unsubs.forEach((u) => u())

@@ -3,7 +3,7 @@ import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
 import {
-  cellLabel, cellTone, dueLabel, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary,
+  cellLabel, cellTone, dueLabel, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary,
   type Cell, type Exceptions, type StageRow,
 } from './stages.ts'
 import { fakeSub } from './testing.ts'
@@ -209,5 +209,27 @@ describe('rows and counts', () => {
     expect(cellTone(c('skipped'))).toBe('faint')
     expect(cellTone(c('notFor'))).toBe('faint')
     expect(cellTone(c('sent'))).toBe('')
+  })
+})
+
+describe('loading stages', () => {
+  it('readStages tolerates malformed data', () => {
+    expect(readStages(undefined)).toEqual([])
+    expect(readStages({ stages: [{ id: 's', name: 'A', templateIds: 'x', dueFrom: '1 Dec', appliesTo: 'weird' }, { name: 'no id' }] }))
+      .toEqual([{ id: 's', name: 'A', templateIds: [], dueFrom: null, appliesTo: 'everyone' }])
+  })
+  it('readStages keeps valid values', () => {
+    expect(readStages({ stages: [{ id: 's', name: 'A', templateIds: ['t', 3], dueFrom: '2026-12-01', appliesTo: 'added' }] }))
+      .toEqual([{ id: 's', name: 'A', templateIds: ['t'], dueFrom: '2026-12-01', appliesTo: 'added' }])
+  })
+  it('readExceptions drops non-strings and non-lists', () => {
+    expect(readExceptions({ skipped: ['a', 3], added: 'b' })).toEqual({ skipped: ['a'], added: [] })
+    expect(readExceptions(null)).toEqual({ skipped: [], added: [] })
+  })
+  it('toggled adds once and removes all', () => {
+    expect(toggled(['a'], 'a', true)).toEqual(['a'])
+    expect(toggled(['a', 'b'], 'a', false)).toEqual(['b'])
+    expect(toggled(['a', 'b', 'a'], 'a', false)).toEqual(['b'])
+    expect(toggled(['a'], 'b', true)).toEqual(['a', 'b'])
   })
 })

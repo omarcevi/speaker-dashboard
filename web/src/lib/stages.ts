@@ -15,6 +15,38 @@ export const FOLLOW_KINDS: ReadonlySet<CellKind> = new Set<CellKind>(['bounced',
 export const SENT_KINDS: ReadonlySet<CellKind> = new Set<CellKind>(['sent', 'manual', 'replied', 'answer'])
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+const isoDay = /^\d{4}-\d{2}-\d{2}$/
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+/** Stages from the `meta/stages` document data. Rules don't check element shapes, so every field is checked here. */
+export function readStages(raw: unknown): Stage[] {
+  const stages = isRecord(raw) && Array.isArray(raw.stages) ? raw.stages : []
+  const out: Stage[] = []
+  for (const s of stages) {
+    if (!isRecord(s) || typeof s.id !== 'string' || s.id === '' || typeof s.name !== 'string') continue
+    out.push({
+      id: s.id,
+      name: s.name,
+      templateIds: list(s.templateIds),
+      dueFrom: typeof s.dueFrom === 'string' && isoDay.test(s.dueFrom) ? s.dueFrom : null,
+      appliesTo: s.appliesTo === 'added' ? 'added' : 'everyone',
+    })
+  }
+  return out
+}
+
+/** A speaker's skipped / added stage ids from their `speakerStages` document data. */
+export function readExceptions(raw: unknown): Exceptions {
+  const r = isRecord(raw) ? raw : {}
+  return { skipped: list(r.skipped), added: list(r.added) }
+}
+
+/** `ids` with `id` added once (`on`) or removed everywhere (`!on`). */
+export function toggled(ids: string[], id: string, on: boolean): string[] {
+  if (on) return ids.includes(id) ? ids : [...ids, id]
+  return ids.filter((x) => x !== id)
+}
+
 const validStage = (s: Stage): boolean => !!s && typeof s.id === 'string' && s.id !== ''
 const ms = (t: { toMillis(): number } | null | undefined): number | null => (typeof t?.toMillis === 'function' ? t.toMillis() : null)
 const timeOf = (e: EmailDoc): number => ms(e.sentAt) ?? ms(e.sendAt) ?? 0

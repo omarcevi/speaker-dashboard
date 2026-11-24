@@ -1,8 +1,9 @@
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes } from 'firebase/storage'
-import type { EmailTemplate, EventField, RecipientRule, Role, Status, TemplateAttachment } from '../../../functions/src/model.ts'
+import type { EmailTemplate, EventField, RecipientRule, Role, Stage, Status, TemplateAttachment } from '../../../functions/src/model.ts'
 import { db, storage } from '../firebase.ts'
 import { displayFileName, safeFileName } from '../lib/emails.ts'
+import { readExceptions, toggled } from '../lib/stages.ts'
 
 export interface Actor { uid: string; name: string }
 
@@ -94,4 +95,18 @@ export async function uploadTemplateAttachment(templateId: string, file: File): 
 
 export async function saveEvent(fields: EventField[], signatureHtml: string, me: Actor): Promise<void> {
   await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+}
+
+export async function saveStages(stages: Stage[], me: Actor): Promise<void> {
+  await setDoc(doc(db, 'meta', 'stages'), { stages, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+}
+
+/** Skip a stage for one speaker, or add an `appliesTo: 'added'` stage to them. Read and written in one transaction so
+ *  two admins changing the same speaker never overwrite each other's lists. */
+export async function setStageException(speakerKey: string, stageId: string, which: 'skipped' | 'added', on: boolean, me: Actor): Promise<void> {
+  const ref = doc(db, 'speakerStages', speakerKey)
+  await runTransaction(db, async (tx) => {
+    const current = readExceptions((await tx.get(ref)).data())
+    tx.set(ref, { ...current, [which]: toggled(current[which], stageId, on), updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+  })
 }
