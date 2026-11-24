@@ -47,6 +47,14 @@ export function toggled(ids: string[], id: string, on: boolean): string[] {
   return ids.filter((x) => x !== id)
 }
 
+/** `current` with `stageId` toggled in its `which` list, keeping only ids of stages that still exist (`stageIds`), so
+ *  the lists never grow past the rules' cap with removed stages. */
+export function changedExceptions(current: Exceptions, stageIds: readonly string[], stageId: string, which: keyof Exceptions, on: boolean): Exceptions {
+  const keep = (ids: string[]) => ids.filter((id) => stageIds.includes(id))
+  const next = { skipped: keep(current.skipped), added: keep(current.added) }
+  return { ...next, [which]: keep(toggled(next[which], stageId, on)) }
+}
+
 const validStage = (s: Stage): boolean => !!s && typeof s.id === 'string' && s.id !== ''
 const ms = (t: { toMillis(): number } | null | undefined): number | null => (typeof t?.toMillis === 'function' ? t.toMillis() : null)
 const timeOf = (e: EmailDoc): number => ms(e.sentAt) ?? ms(e.sendAt) ?? 0

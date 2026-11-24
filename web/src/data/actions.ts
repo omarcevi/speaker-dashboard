@@ -3,7 +3,7 @@ import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import type { EmailTemplate, EventField, RecipientRule, Role, Stage, Status, TemplateAttachment } from '../../../functions/src/model.ts'
 import { db, storage } from '../firebase.ts'
 import { displayFileName, safeFileName } from '../lib/emails.ts'
-import { readExceptions, toggled } from '../lib/stages.ts'
+import { changedExceptions, readExceptions, readStages } from '../lib/stages.ts'
 
 export interface Actor { uid: string; name: string }
 
@@ -106,7 +106,8 @@ export async function saveStages(stages: Stage[], me: Actor): Promise<void> {
 export async function setStageException(speakerKey: string, stageId: string, which: 'skipped' | 'added', on: boolean, me: Actor): Promise<void> {
   const ref = doc(db, 'speakerStages', speakerKey)
   await runTransaction(db, async (tx) => {
+    const stageIds = readStages((await tx.get(doc(db, 'meta', 'stages'))).data()).map((s) => s.id)
     const current = readExceptions((await tx.get(ref)).data())
-    tx.set(ref, { ...current, [which]: toggled(current[which], stageId, on), updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+    tx.set(ref, { ...changedExceptions(current, stageIds, stageId, which, on), updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
   })
 }

@@ -3,7 +3,7 @@ import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
 import {
-  cellLabel, cellTone, dueLabel, markNote, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, sendLink, stagesProblem, withTemplate,
+  cellLabel, cellTone, changedExceptions, dueLabel, markNote, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, sendLink, stagesProblem, withTemplate,
   type Cell, type Exceptions, type StageRow,
 } from './stages.ts'
 import { fakeSub } from './testing.ts'
@@ -225,6 +225,12 @@ describe('loading stages', () => {
   it('readExceptions drops non-strings and non-lists', () => {
     expect(readExceptions({ skipped: ['a', 3], added: 'b' })).toEqual({ skipped: ['a'], added: [] })
     expect(readExceptions(null)).toEqual({ skipped: [], added: [] })
+  })
+  it('changedExceptionsDropsRemovedStages', () => {
+    const current = { skipped: ['gone', 'a'], added: ['old', 'b'] }
+    expect(changedExceptions(current, ['a', 'b', 'c'], 'c', 'skipped', true)).toEqual({ skipped: ['a', 'c'], added: ['b'] })
+    expect(changedExceptions(current, ['a', 'b'], 'b', 'added', false)).toEqual({ skipped: ['a'], added: [] })
+    expect(changedExceptions(current, ['a'], 'gone', 'skipped', true)).toEqual({ skipped: ['a'], added: [] })
   })
   it('toggled adds once and removes all', () => {
     expect(toggled(['a'], 'a', true)).toEqual(['a'])
