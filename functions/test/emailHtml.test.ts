@@ -19,6 +19,21 @@ describe('emailHtml', () => {
     if (r.ok) expect(r.html).toBe('<p>Hi</p><br><p>Team</p><p><img src="https://x.test/l.png" alt="logo"></p>')
   })
 
+  it('fillsSignature', () => {
+    const r = renderHtmlEmail({ subject: 's', html: '<p>Hi {{firstName}}</p>' }, { firstName: 'Ada', venue: 'Hall <A> & "B"' },
+      '<p>See you at {{venue}}, {{ firstName }}</p>')
+    expect(r).toMatchObject({ ok: true, html: '<p>Hi Ada</p><br><p>See you at Hall &lt;A&gt; &amp; &quot;B&quot;, Ada</p>' })
+  })
+
+  it('signatureFillInsBlockLikeBody', () => {
+    const r = renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, { venue: ' ' }, '<p>{{venue}} {{nope}} {{<b>firstName</b>}}</p>')
+    expect(r).toEqual({ ok: false, missing: ['nope', '{{<b>firstName</b>}}'], empty: ['venue'] })
+  })
+
+  it('blankSignatureFillInsIgnored', () => {
+    expect(renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, {}, '<p></p>')).toMatchObject({ ok: true, html: '<p>Hi</p>' })
+  })
+
   it('emptySignatureAddsNothing', () => {
     const r = renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, {}, '<p></p>')
     expect(r).toMatchObject({ ok: true, html: '<p>Hi</p>' })

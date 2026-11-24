@@ -54,17 +54,18 @@ const escapeValue = (s: string) => escapeHtml(s).replace(/\r\n?|\n/g, '<br>')
 export type RenderedHtml = { ok: true; subject: string; html: string } | { ok: false; missing: string[]; empty: string[] }
 
 /**
- * Fills the subject (plain text) and body (escaped HTML) and appends the signature. Missing and empty fill-ins are
- * reported exactly as renderEmail does.
+ * Fills the subject (plain text), body and signature (escaped HTML) and appends the signature. Missing and empty
+ * fill-ins, the signature's included, are reported exactly as renderEmail does.
  */
 export function renderHtmlEmail(t: { subject: string; html: string }, values: Record<string, string>, signatureHtml: string): RenderedHtml {
-  const names = [...new Set([...fillInsIn(t.subject), ...fillInsIn(t.html)])]
+  const signed = !isBlankHtml(signatureHtml)
+  const names = [...new Set([...fillInsIn(t.subject), ...fillInsIn(t.html), ...(signed ? fillInsIn(signatureHtml) : [])])]
   const has = (n: string) => Object.prototype.hasOwnProperty.call(values, n)
   const missing = names.filter((n) => !has(n))
   const empty = names.filter((n) => has(n) && values[n].trim() === '')
   if (missing.length || empty.length) return { ok: false, missing, empty }
   const fill = (s: string, value: (v: string) => string) => fillInParts(s).map((p) => (p.kind === 'fill' ? value(values[p.name]) : p.text)).join('')
   const body = cleanEmailHtml(fill(t.html, escapeValue))
-  const signature = isBlankHtml(signatureHtml) ? '' : `<br>${cleanEmailHtml(signatureHtml)}`
+  const signature = signed ? `<br>${cleanEmailHtml(fill(signatureHtml, escapeValue))}` : ''
   return { ok: true, subject: fill(t.subject, (v) => v), html: body + signature }
 }

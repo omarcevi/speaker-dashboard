@@ -169,6 +169,16 @@ describe('prepare', () => {
     expect(p.html).toBe('<p>Hi <strong>A&lt;b&gt;&amp;&quot;</strong></p><br><p>The DevFest team</p>')
   })
 
+  it('fills the signature and blocks on its empty fill-ins', () => {
+    const ok = prepare('acceptance', { subject: 'Hi', body: 'x' }, ada, judge(), fields,
+      { templateId: 'acc', followUp: false, signatureHtml: '<p>See you at {{venue}}, {{firstName}}</p>' })
+    expect(ok.html).toBe('<p>x</p><br><p>See you at Hall A, Ada</p>')
+    const blocked = prepare('acceptance', { subject: 'Hi', body: 'x' }, ada, judge(), fields,
+      { templateId: 'acc', followUp: false, signatureHtml: '<p>Reply by {{deadline}}</p>' })
+    expect(blockedReason(blocked)).toBe('{{deadline}} is empty')
+    expect(blocked.html).toBe('<p>x</p><br><p>Reply by {{deadline}}</p>')
+  })
+
   it('previews a template without html from its body', () => {
     const p = prepare('acceptance', { subject: 'Hi', body: 'See you at {{venue}}' }, ada, judge(), fields,
       { templateId: 'acc', followUp: false, signatureHtml: '' })
