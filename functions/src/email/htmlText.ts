@@ -50,8 +50,10 @@ export function emailHtmlToText(html: string): string {
       const marker = list?.ordered ? `${++list.n}. ` : '• '
       write('  '.repeat(Math.max(lists.length - 1, 0)) + marker)
       afterMarker = true
-    } else if (BLOCKS.has(name)) {
+    } else if (BLOCKS.has(name) || name === 'table') {
       brk(lists.length ? 1 : 2)
+    } else if (name === 'tr' || name === 'td' || name === 'th') {
+      brk(1) // a signature's table cells: one per line
     } else if (name === 'a') {
       if (!close) {
         const href = /\shref="([^"]*)"/i.exec(attrs)?.[1]
