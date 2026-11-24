@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanEmailHtml, renderHtmlEmail, templateHtml } from '../src/shared/emailHtml.js'
+import { cleanEmailHtml, isBlankHtml, renderHtmlEmail, templateHtml } from '../src/shared/emailHtml.js'
 import { fillInsIn, renderEmail } from '../src/email/fillIns.js'
 
 describe('emailHtml', () => {
@@ -59,5 +59,22 @@ describe('emailHtml', () => {
 
   it('emptyFillIn', () => {
     expect(renderHtmlEmail({ subject: 's', html: '<p>{{venue}}</p>' }, { venue: ' ' }, '')).toEqual({ ok: false, missing: [], empty: ['venue'] })
+  })
+
+  it('dropsImagesWithoutAllowedSrc', () => {
+    expect(cleanEmailHtml('<img src="data:x" alt="x">')).toBe('')
+    expect(isBlankHtml('<p><img src="cid:x"></p>')).toBe(true)
+    expect(isBlankHtml('<p><img src="https://x.test/a.png"></p>')).toBe(false)
+  })
+
+  it('acceptsSchemeInAnyCase', () => {
+    expect(cleanEmailHtml('<a href="HTTPS://X.test">x</a>')).toBe('<a href="HTTPS://X.test" target="_blank" rel="noopener noreferrer">x</a>')
+  })
+
+  it('keepsAndDropsUrlsByScheme', () => {
+    expect(cleanEmailHtml('<img src="http://t.test/p.gif">')).toBe('<img src="http://t.test/p.gif">')
+    expect(cleanEmailHtml('<a href="mailto:a@b.test">m</a>')).toContain('href="mailto:a@b.test"')
+    expect(cleanEmailHtml('<img src="mailto:a@b.test" alt="x">')).toBe('')
+    expect(cleanEmailHtml('<style>p{color:red}</style>q')).toBe('q')
   })
 })

@@ -1,7 +1,7 @@
 // Shared with the web app (Vite bundles it, so the editor preview matches what the server sends). Server-safe and
 // browser-safe: no Node imports. May import only ../model.js, ../talkKey.js and other files in shared/ or email/fillIns.js.
 
-import { FilterXSS } from 'xss'
+import { FilterXSS, escapeAttrValue } from 'xss'
 import { fillInParts, fillInsIn, toHtml } from '../email/fillIns.js'
 
 const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'hr', 'span', 'div']
@@ -25,6 +25,8 @@ const filter = new FilterXSS({
     if (name === 'href' || name === 'src') return SAFE_URL[tag]?.test(value.trim()) ? undefined : ''
     return undefined
   },
+  // The default only accepts a lower-case scheme and would leave a bare href, so href and src are checked above.
+  safeAttrValue: (_tag, name, value) => (name === 'href' || name === 'src' ? escapeAttrValue(value.trim()) : escapeAttrValue(value)),
 })
 
 // Opening <a href="..."> tags in the filter's output get target and rel. The output is already sanitized, so every
@@ -32,7 +34,7 @@ const filter = new FilterXSS({
 const addLinkAttrs = (html: string) => html.replace(/<a href="[^"]*"/g, (m) => `${m} target="_blank" rel="noopener noreferrer"`)
 
 /** Email HTML restricted to the allowed tags and attributes; everything else is removed or unwrapped. */
-export const cleanEmailHtml = (html: string): string => addLinkAttrs(filter.process(html))
+export const cleanEmailHtml = (html: string): string => addLinkAttrs(filter.process(html)).replace(/<img(?![^>]*\ssrc=)[^>]*>/g, '')
 
 /** True when the cleaned HTML has no text and no image. */
 export function isBlankHtml(html: string): boolean {
