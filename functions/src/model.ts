@@ -87,6 +87,10 @@ export interface EmailTemplate {
 } // templates/{id}
 export interface EventField { key: string; label: string; value: string }
 export interface EventSettings { fields: EventField[]; signatureHtml?: string; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/event
+export type StageAppliesTo = 'everyone' | 'added'
+export interface Stage { id: string; name: string; templateIds: string[]; dueFrom: string | null; appliesTo: StageAppliesTo }
+export interface StagesDoc { stages: Stage[]; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/stages
+export interface SpeakerStages { skipped: string[]; added: string[]; updatedAt: Ts; updatedBy: string; updatedByName: string } // speakerStages/{speakerKey}
 export type EmailState = 'scheduled' | 'queued' | 'sending' | 'sent' | 'failed' | 'unknown' | 'held' | 'cancelled'
 // emails/{id}. subject and text stay null until rendered, for scheduled emails.
 export interface EmailDoc {

@@ -9,7 +9,7 @@ import { fakeSheet } from '../src/testing/fakeRows.js';
 import { refreshAi } from '../src/ai/refreshAi.js';
 import { fakeAiClient } from '../src/testing/fakeAiClient.js';
 import { seedTemplates } from '../src/email/seedTemplates.js';
-import type { EmailDoc, ReceivedMessage, Role, ThreadDoc } from '../src/model.js';
+import type { EmailDoc, EmailTemplate, ReceivedMessage, Role, StagesDoc, SpeakerStages, ThreadDoc } from '../src/model.js';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   throw new Error('Refusing to run: emulator host env vars are not set.');
@@ -77,6 +77,39 @@ async function seedEmail() {
   const review = { updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User' };
   await db.doc('reviews/row-9').set({ status: 'approved', ...review });
   await db.doc('reviews/row-12').set({ status: 'declined', ...review });
+  await db.doc('reviews/row-11').set({ status: 'approved', ...review });
+
+  const eventInfo: EmailTemplate = {
+    name: 'Event info', rule: 'approved', stageId: null, attachments: [],
+    subject: 'Event details for {{eventName}}',
+    body: 'Hi {{firstName}},\n\nHere are the details for {{eventName}} on {{eventDate}} at {{venue}}.\n\nThe {{eventName}} team',
+    updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
+  };
+  await db.doc('templates/event-info').set(eventInfo);
+  const visaLetter: EmailTemplate = {
+    name: 'Visa letter', rule: 'approved', stageId: null, attachments: [],
+    subject: 'Your visa invitation letter for {{eventName}}',
+    body: 'Hi {{firstName}},\n\nWe are preparing your visa invitation letter for {{eventName}} on {{eventDate}}.\n\nThe {{eventName}} team',
+    updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
+  };
+  await db.doc('templates/visa-letter').set(visaLetter);
+
+  // Stages: Acceptance is already due (Tim replied, Donald is missing it), Event info is not due yet.
+  const istanbulDate = (offsetMs: number) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date(now + offsetMs));
+  const stages: StagesDoc = {
+    stages: [
+      { id: 'acceptance', name: 'Acceptance', templateIds: ['acceptance'], dueFrom: istanbulDate(-3 * DAY), appliesTo: 'everyone' },
+      { id: 'event-info', name: 'Event info', templateIds: ['event-info'], dueFrom: istanbulDate(7 * DAY), appliesTo: 'everyone' },
+      { id: 'visa-letter', name: 'Visa letter', templateIds: ['visa-letter'], dueFrom: null, appliesTo: 'added' },
+    ],
+    updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
+  };
+  const timStages: SpeakerStages = {
+    skipped: [], added: ['visa-letter'], updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
+  };
+  await db.doc('meta/stages').set(stages);
+  await db.doc('speakerStages/tim@example.com').set(timStages);
 
   const base = {
     cc: [], attachments: [], reason: null, manual: false, replyToThreadId: null, claimedAt: null, bounce: null,

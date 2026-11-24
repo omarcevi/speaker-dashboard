@@ -56,18 +56,47 @@ export const passes = (r: RecipientRow, f: RowFilter) =>
   (f.decision === 'all' || r.decision === f.decision) && !(f.hideAlready && r.already)
 
 /**
- * The speakers a batch goes to: ticked Ready rows the filters show. `hidden` counts ticked Ready rows the filters
- * hide, which are left out.
+ * Who is ticked on step 1. With no speakers targeted, everyone but `except` (so a speaker who appears later starts
+ * ticked). When a link targets speakers (`?speaker=`, once or more), only `keys`: anyone else, including a speaker who
+ * appears while the page is open, stays unticked until ticked by hand.
  */
-export function visibleSelection(rows: RecipientRow[], unticked: ReadonlySet<string>, f: RowFilter): { selected: string[]; hidden: number } {
-  const ticked = rows.filter((r) => r.tab === 'ready' && !unticked.has(r.g.speakerKey))
+export type Ticks = { all: true; except: ReadonlySet<string> } | { all: false; keys: ReadonlySet<string> }
+
+/** The starting ticks: only the targeted speakers, or everyone when none are. */
+export const startTicks = (only: string[] | null): Ticks =>
+  only && only.length > 0 ? { all: false, keys: new Set(only) } : { all: true, except: new Set() }
+
+export const isTicked = (t: Ticks, key: string): boolean => (t.all ? !t.except.has(key) : t.keys.has(key))
+
+/** `t` with `key` ticked (`on`) or unticked. */
+export function withTick(t: Ticks, key: string, on: boolean): Ticks {
+  const flip = (set: ReadonlySet<string>, add: boolean) => { const n = new Set(set); if (add) n.add(key); else n.delete(key); return n }
+  return t.all ? { all: true, except: flip(t.except, !on) } : { all: false, keys: flip(t.keys, on) }
+}
+
+/**
+ * The speakers a batch goes to (or is marked for): ticked Ready rows the filters show. `hidden` counts ticked Ready
+ * rows the filters hide, which are left out.
+ */
+export function visibleSelection(rows: RecipientRow[], ticks: Ticks, f: RowFilter): { selected: string[]; hidden: number } {
+  const ticked = rows.filter((r) => r.tab === 'ready' && isTicked(ticks, r.g.speakerKey))
   const selected = ticked.filter((r) => passes(r, f)).map((r) => r.g.speakerKey)
   return { selected, hidden: ticked.length - selected.length }
 }
 
-/** The starting unticked set: with a chosen speaker (from their Email menu), everyone else; otherwise nobody. */
-export function untickedExcept(speakerKeys: string[], only: string | null): Set<string> {
-  return only === null ? new Set() : new Set(speakerKeys.filter((k) => k !== only))
+export const NO_LONGER_A_SPEAKER = 'No longer a speaker'
+
+/** The targeted speakers who can't get the template now, with their reason: rows not on the Ready tab, and keys
+ *  that match no speaker any more. */
+export function pickedNotReady(rows: RecipientRow[], picked: string[]): { key: string; name: string; reason: string }[] {
+  const byKey = new Map(rows.map((r) => [r.g.speakerKey, r]))
+  const out: { key: string; name: string; reason: string }[] = []
+  for (const key of new Set(picked)) {
+    const r = byKey.get(key)
+    if (!r) out.push({ key, name: key, reason: NO_LONGER_A_SPEAKER })
+    else if (r.tab !== 'ready') out.push({ key, name: speakerName(r.g), reason: r.reason ?? '' })
+  }
+  return out
 }
 
 /** "Ada Lovelace, Grace Hopper" — at most `max` names, then "+N more". */

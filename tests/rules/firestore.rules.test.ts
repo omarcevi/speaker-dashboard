@@ -41,6 +41,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'meta/sync'), { at: 1 });
     await setDoc(doc(db, 'meta/advocu'), { total: 1 });
     await setDoc(doc(db, 'meta/event'), { fields: [] });
+    await setDoc(doc(db, 'meta/stages'), { stages: [] });
+    await setDoc(doc(db, 'speakerStages/ada@example.com'), { skipped: [], added: [] });
     await setDoc(doc(db, 'templates/t1'), { name: 'Welcome', subject: 'Hi', body: 'Hello', attachments: [], rule: 'anyone', stageId: null });
     await setDoc(doc(db, 'emails/e1'), { subject: 'Hi' });
     await setDoc(doc(db, 'threads/th1'), { subject: 'Hi' });
@@ -431,6 +433,68 @@ describe('meta/event', () => {
   it('admin still cannot write meta/sync or meta/other', async () => {
     await assertFails(setDoc(doc(as('adm1'), 'meta/sync'), { at: 2 }));
     await assertFails(setDoc(doc(as('adm1'), 'meta/other'), ev()));
+  });
+});
+
+describe('meta/stages', () => {
+  const st = (extra: object = {}) => ({
+    stages: [{ id: 's1', name: 'Invite', templateIds: ['t1'], dueFrom: null, appliesTo: 'everyone' }],
+    updatedAt: serverTimestamp(), updatedBy: 'adm1', updatedByName: 'Adele', ...extra,
+  });
+  it('member can read meta/stages', async () => {
+    await assertSucceeds(getDoc(doc(as('mem1'), 'meta/stages')));
+  });
+  it('waiting, removed and signed out cannot read meta/stages', async () => {
+    await assertFails(getDoc(doc(as('wait1'), 'meta/stages')));
+    await assertFails(getDoc(doc(as('rem1'), 'meta/stages')));
+    await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'meta/stages')));
+  });
+  it('admin can write a valid meta/stages', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), 'meta/stages'), st()));
+  });
+  it('admin cannot add an extra key', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/stages'), st({ x: 1 })));
+  });
+  it('admin cannot write a non-list or more than 30 stages', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/stages'), st({ stages: 'a' })));
+    await assertFails(setDoc(doc(as('adm1'), 'meta/stages'), st({ stages: Array.from({ length: 31 }, (_, i) => ({ id: `s${i}` })) })));
+  });
+  it('admin cannot set another updatedByName', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/stages'), st({ updatedByName: 'Someone' })));
+  });
+  it('member cannot write meta/stages', async () => {
+    await assertFails(setDoc(doc(as('mem1'), 'meta/stages'), st({ updatedBy: 'mem1', updatedByName: 'Mo' })));
+  });
+  it('admin still cannot write meta/sync', async () => {
+    await assertFails(setDoc(doc(as('adm1'), 'meta/sync'), { at: 2 }));
+  });
+});
+
+describe('speakerStages', () => {
+  const ss = (extra: object = {}) => ({
+    skipped: ['s1'], added: [], updatedAt: serverTimestamp(), updatedBy: 'adm1', updatedByName: 'Adele', ...extra,
+  });
+  const path = 'speakerStages/ada@example.com';
+  it('member can read, waiting cannot', async () => {
+    await assertSucceeds(getDoc(doc(as('mem1'), path)));
+    await assertFails(getDoc(doc(as('wait1'), path)));
+  });
+  it('admin can write a valid doc', async () => {
+    await assertSucceeds(setDoc(doc(as('adm1'), path), ss()));
+  });
+  it('admin cannot omit added or write non-lists', async () => {
+    const { added, ...noAdded } = ss();
+    await assertFails(setDoc(doc(as('adm1'), path), noAdded));
+    await assertFails(setDoc(doc(as('adm1'), path), ss({ skipped: 's1' })));
+  });
+  it('admin cannot write more than 50 entries', async () => {
+    await assertFails(setDoc(doc(as('adm1'), path), ss({ skipped: Array.from({ length: 51 }, (_, i) => `s${i}`) })));
+  });
+  it('member cannot write', async () => {
+    await assertFails(setDoc(doc(as('mem1'), path), ss({ updatedBy: 'mem1', updatedByName: 'Mo' })));
+  });
+  it('admin cannot delete', async () => {
+    await assertFails(deleteDoc(doc(as('adm1'), path)));
   });
 });
 

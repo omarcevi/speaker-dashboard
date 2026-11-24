@@ -16,7 +16,7 @@ import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { editorFillIns, formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
 import {
-  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, untickedExcept, visibleSelection,
+  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, isTicked, pickedNotReady, plural, prepare, recipientRows, speakerName, startTicks, visibleSelection, withTick,
   type DecisionFilter, type Judge, type Prepared, type RecipientRow, type Tab,
 } from '../lib/send.ts'
 
@@ -106,7 +106,9 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
   return { button, error, reset }
 }
 
-function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string | null }) {
+function Flow({ mode, template, speakerKey, only, fromStages }: {
+  mode: Mode; template: Template | null; speakerKey: string | null; only: string[]; fromStages: boolean
+}) {
   const { emails, event, signatureHtml } = useData()
   const sp = useSpeakers()
   const fields = useMemo(() => event?.fields ?? [], [event])
@@ -122,9 +124,9 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   const [tab, setTab] = useState<Tab>('ready')
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all')
   const [hideAlready, setHideAlready] = useState(false)
-  // Picked from a speaker's Email menu (?speaker= on a batch): only that speaker starts ticked; the rest stay listed.
-  const [unticked, setUnticked] = useState<Set<string>>(() =>
-    untickedExcept(sp.groups.map((g) => g.speakerKey), mode === 'batch' ? only : null))
+  // Picked from a speaker's Email menu or the Stages grid (?speaker= on a batch, once or more): only they are ticked,
+  // and anyone else (even a speaker who appears while the page is open) stays listed but unticked.
+  const [ticks, setTicks] = useState(() => startTicks(mode === 'batch' ? only : null))
   const [picked, setPicked] = useState<string[]>(speakerKey ? [speakerKey] : [])
   const [at, setAt] = useState(0)
   const [includeCc, setIncludeCc] = useState(true)
@@ -155,8 +157,10 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   const ready = rows.filter((r) => r.tab === 'ready')
   const rowFilter = { decision: decisionFilter, hideAlready }
   // Only ticked rows the filters show are sent or marked; ticked rows a filter hides are counted, not acted on.
-  const { selected, hidden } = visibleSelection(rows, unticked, rowFilter)
+  const { selected, hidden } = visibleSelection(rows, ticks, rowFilter)
   const shown = (t: Tab) => rows.filter((r) => r.tab === t && passes(r, rowFilter))
+  // Picked speakers who can't get it are named, not silently dropped.
+  const notReady = mode === 'batch' ? pickedNotReady(rows, only) : []
   const firstSend = decisionTmpl && !emails.some((e) => e.templateId === templateId && e.state === 'sent' && !e.manual)
 
   // Step 2 on: the recipients picked, as their emails would be written now.
@@ -237,7 +241,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
       ? [['ready', 'Ready'], ['follow', 'Needs a follow-up'], ['not', 'Not ready']]
       : [['ready', 'Can get it'], ['not', "Can't get it"]]
     const list = shown(tab)
-    const toggle = (k: string, on: boolean) => setUnticked((s) => { const n = new Set(s); if (on) n.delete(k); else n.add(k); return n })
+    const toggle = (k: string, on: boolean) => setTicks((t) => withTick(t, k, on))
     const ccNames = (r: RecipientRow) => r.g.cards.filter((c) => c.coSpeaker && r.cc.includes(c.coSpeaker.email.trim().toLowerCase()))
       .map((c) => c.coSpeaker!.firstName.trim() || c.coSpeaker!.email)
     const sentOn = (r: RecipientRow) => {
@@ -268,6 +272,11 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
             )}
           </div>
         )}
+        {notReady.length > 0 && (
+          <p className="warn-line" style={{ marginTop: 16 }}>
+            <span>Not ready for this template: {nameList(notReady.map((r) => `${r.name} (${r.reason})`))}</span>
+          </p>
+        )}
         <div className="filterbar" role="group" aria-label="Decision" style={{ marginTop: 16 }}>
           {DECISIONS.map(([k, label]) => (
             <button key={k} type="button" aria-pressed={k === decisionFilter} onClick={() => setDecisionFilter(k)}>{label}</button>
@@ -296,7 +305,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
                   return (
                     <tr key={k} className={on ? undefined : 'off'}>
                       <td style={{ width: 44 }}>
-                        {on && <input type="checkbox" className="check" checked={!unticked.has(k)} aria-label={`Include ${speakerName(r.g)}`}
+                        {on && <input type="checkbox" className="check" checked={isTicked(ticks, k)} aria-label={`Include ${speakerName(r.g)}`}
                           onChange={(e) => toggle(k, e.target.checked)} />}
                       </td>
                       <td>
@@ -568,7 +577,9 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
       </section>
       <div className="actionbar" style={{ maxWidth: 640 }}>
         <span className="grow" />
-        {!custom && <Link className="btn" to="/emails/templates">Back to templates</Link>}
+        {fromStages
+          ? <Link className="btn" to="/emails/stages">Back to Stages</Link>
+          : !custom && <Link className="btn" to="/emails/templates">Back to templates</Link>}
         <Link className="btn primary" to="/emails">Open Emails</Link>
       </div>
     </>
@@ -601,5 +612,6 @@ export default function SendPage() {
   }
   const mode: Mode = custom ? 'custom' : followUp ? 'followUp' : 'batch'
   // A new visit (link followed) starts a new flow with a new batch id.
-  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={speaker} />
+  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={params.getAll('speaker')}
+    fromStages={params.get('from') === 'stages'} />
 }

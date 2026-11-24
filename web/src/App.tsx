@@ -6,6 +6,8 @@ import ErrorBoundary from './components/ErrorBoundary.tsx'
 import Nav from './components/Nav.tsx'
 import EmailsPage from './pages/EmailsPage.tsx'
 import EventSettingsPage from './pages/EventSettingsPage.tsx'
+import ManageStagesPage from './pages/ManageStagesPage.tsx'
+import StagesPage from './pages/StagesPage.tsx'
 import ImportPage from './pages/ImportPage.tsx'
 import ListPage from './pages/ListPage.tsx'
 import LogisticsPage from './pages/LogisticsPage.tsx'
@@ -56,6 +58,8 @@ function Shell() {
           <Route path="/emails/templates/:id" element={<TemplateEditPage />} />
           <Route path="/emails/templates/:id/send" element={<SendPage />} />
           <Route path="/emails/send" element={<SendPage />} />
+          <Route path="/emails/stages" element={<StagesPage />} />
+          <Route path="/emails/stages/manage" element={me?.role === 'admin' ? <ManageStagesPage /> : <Navigate to="/emails/stages" replace />} />
           <Route path="/emails/event" element={<EventSettingsPage />} />
           <Route path="/team" element={me?.role === 'admin' ? <TeamPage /> : <Navigate to="/" replace />} />
           <Route path="/import" element={me?.role === 'admin' ? <ImportPage /> : <Navigate to="/" replace />} />

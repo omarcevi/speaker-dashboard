@@ -10,6 +10,7 @@ export default function EmailsTabs() {
         <NavLink to="/emails" end>Conversations</NavLink>
         <NavLink to="/emails/templates">Templates</NavLink>
         <NavLink to="/emails/event">Event settings</NavLink>
+        <NavLink to="/emails/stages">Stages</NavLink>
       </nav>
       {mailMeta?.sendError && <div className="banner mail-banner" role="alert">Sending is failing: {mailMeta.sendError}</div>}
       {mailMeta?.pollError && <div className="banner mail-banner" role="alert">Checking for replies is failing: {mailMeta.pollError}</div>}
