@@ -10,6 +10,7 @@ export interface LoadedSpeakers {
   status: (id: string) => Status
   historyOf: (speakerKey: string) => EmailDoc[]
   event: EventField[]
+  signatureHtml: string
 }
 
 export async function loadSpeakers(db: Firestore): Promise<LoadedSpeakers> {
@@ -43,5 +44,6 @@ export async function loadSpeakers(db: Firestore): Promise<LoadedSpeakers> {
     status: (id) => statuses.get(id) ?? 'pending',
     historyOf: (key) => history.get(key) ?? [],
     event: event.exists ? (event.data() as EventSettings).fields ?? [] : [],
+    signatureHtml: event.exists ? (event.data() as EventSettings).signatureHtml ?? '' : '',
   }
 }

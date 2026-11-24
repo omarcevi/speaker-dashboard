@@ -193,12 +193,13 @@ const bad = (message: string) => new HttpsError('invalid-argument', message);
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === 'string' && ID.test(v);
 
-function custom(v: unknown): { subject: string; body: string } | null {
+function custom(v: unknown): { subject: string; body: string; html?: string } | null {
   if (v === null) return null;
   if (!isObject(v) || typeof v.subject !== 'string' || typeof v.body !== 'string' || v.subject.length > 1_000 || v.body.length > 100_000) {
     throw bad('custom must be null or { subject, body } strings.');
   }
-  return { subject: v.subject, body: v.body };
+  if (v.html !== undefined && (typeof v.html !== 'string' || v.html.length > 200_000)) throw bad('custom.html must be a string.');
+  return v.html === undefined ? { subject: v.subject, body: v.body } : { subject: v.subject, body: v.body, html: v.html };
 }
 
 function speakerKeys(v: unknown): string[] {

@@ -2,7 +2,9 @@
 // when an email is enqueued for "Send now" and again when a scheduled email comes due. Server-only.
 import type { Firestore } from 'firebase-admin/firestore'
 import type { EmailDoc, RecipientRule } from '../model.js'
-import { isFillInName, renderEmail } from './fillIns.js'
+import { renderHtmlEmail, templateHtml } from '../shared/emailHtml.js'
+import { isFillInName } from './fillIns.js'
+import { htmlToText } from './parseMessage.js'
 import type { LoadedSpeakers } from './loadSpeakers.js'
 import { eligibility, fillInValues, type SpeakerGroup } from './recipients.js'
 
@@ -10,7 +12,7 @@ import { eligibility, fillInValues, type SpeakerGroup } from './recipients.js'
 export class QueueRefused extends Error {}
 
 export type Composed =
-  | { ok: true; talkIds: string[]; cc: string[]; subject: string | null; text: string | null }
+  | { ok: true; talkIds: string[]; cc: string[]; subject: string | null; text: string | null; html: string | null }
   | { ok: false; reason: string }
 
 const list = (names: string[]) => names.join(', ')
@@ -31,7 +33,7 @@ export function renderProblem(missing: string[], empty: string[]): string {
  * email's) subject and body; `subjectOverride` replaces the rendered subject (replies use "Re: <first subject>").
  */
 export function compose(
-  rule: RecipientRule, source: { subject: string; body: string }, g: SpeakerGroup | undefined, loaded: LoadedSpeakers,
+  rule: RecipientRule, source: { subject: string; body: string; html?: string | null }, g: SpeakerGroup | undefined, loaded: LoadedSpeakers,
   opts: { templateId: string | null; followUp: boolean; includeCc: boolean; render: boolean; subjectOverride?: string },
 ): Composed {
   if (!g) return { ok: false, reason: 'Speaker has no talks' }
@@ -41,12 +43,14 @@ export function compose(
   })
   if (!e.ok) return e
   const cc = opts.includeCc ? e.cc : []
-  if (!opts.render) return { ok: true, talkIds: e.talkIds, cc, subject: null, text: null }
+  if (!opts.render) return { ok: true, talkIds: e.talkIds, cc, subject: null, text: null, html: null }
   const values = fillInValues(g, e.talkIds, loaded.event)
   // An override is already final text: it is not filled in again.
-  const r = renderEmail({ subject: opts.subjectOverride === undefined ? source.subject : '', body: source.body }, values)
+  const r = renderHtmlEmail(
+    { subject: opts.subjectOverride === undefined ? source.subject : '', html: templateHtml(source) }, values, loaded.signatureHtml,
+  )
   if (!r.ok) return { ok: false, reason: renderProblem(r.missing, r.empty) }
-  return { ok: true, talkIds: e.talkIds, cc, subject: opts.subjectOverride ?? r.subject, text: r.text }
+  return { ok: true, talkIds: e.talkIds, cc, subject: opts.subjectOverride ?? r.subject, text: htmlToText(r.html), html: r.html }
 }
 
 export { inFlightConflict } from './recipients.js'

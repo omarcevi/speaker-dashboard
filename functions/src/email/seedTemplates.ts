@@ -3,6 +3,7 @@
 // is missing, and each doc with create() so parallel runs create it once. Server-only.
 import { Timestamp, type Firestore } from 'firebase-admin/firestore'
 import type { EmailTemplate, EventSettings } from '../model.js'
+import { toHtml } from './fillIns.js'
 
 const BY = { updatedBy: 'system', updatedByName: 'Setup' }
 
@@ -48,7 +49,7 @@ export async function seedTemplates(db: Firestore, now: number = Date.now()): Pr
   const writes: Promise<boolean>[] = []
   if (templates.empty) {
     for (const [id, t] of Object.entries(TEMPLATES)) {
-      const doc: EmailTemplate = { ...t, attachments: [], stageId: null, updatedAt: at, ...BY }
+      const doc: EmailTemplate = { ...t, html: toHtml(t.body), attachments: [], stageId: null, updatedAt: at, ...BY }
       writes.push(createOnce(db.doc(`templates/${id}`), doc))
     }
   }
