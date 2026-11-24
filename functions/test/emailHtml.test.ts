@@ -144,4 +144,31 @@ describe('cleanSignatureHtml', () => {
     expect(isBlankHtml(TWO_COLUMN)).toBe(false)
     expect(isBlankHtml('<table><tr><td><img src="https://x.test/l.png"></td></tr></table>')).toBe(false)
   })
+
+  it('refusesSignatureFillInsInsideTags', () => {
+    const sig = '<span style="color:{{name}}">Team</span>'
+    for (const name of ['x;display:none', '";color:red']) {
+      expect(renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, { name }, sig))
+        .toEqual({ ok: false, missing: ['{{name}} inside an HTML tag'], empty: [] })
+    }
+    const link = '<a href="https://x.test/{{name}}">{{name}}</a>'
+    expect(renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, { name: 'a' }, link))
+      .toEqual({ ok: false, missing: ['{{name}} inside an HTML tag'], empty: [] })
+    // The preview shows it as written, unfilled.
+    const shown = renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, { name: 'x;display:none', '{{name}} inside an HTML tag': '{{name}}' }, sig)
+    expect(shown).toMatchObject({ ok: true, html: '<p>Hi</p><br><span style="color:{{name}};">Team</span>' })
+  })
+
+  it('fillInsInTextOnlyStillFill', () => {
+    const sig = '<span style="color:red">{{name}}</span>'
+    expect(renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, { name: '";color:red <b>' }, sig))
+      .toMatchObject({ ok: true, html: '<p>Hi</p><br><span style="color:red;">&quot;;color:red &lt;b&gt;</span>' })
+  })
+
+  it('dropsNamedReferencesAndFunctions', () => {
+    const out = cleanSignatureHtml('<span style="color:#111; background-color:x( url&lpar;https://e.test/x&rpar; ); '
+      + 'width:x( e&bsol;xpression&lpar;alert(1)&rpar; ); font-family:a( &sol;&ast; ); color:var(--x); '
+      + 'background-color:rgb(1, 2, 3); border-left:2px solid rgba(0,0,0,.5); color:hsl(10, 50%, 50%)">x</span>')
+    expect(out).toBe('<span style="color:#111; background-color:rgb(1, 2, 3); border-left:2px solid rgba(0,0,0,.5); color:hsl(10, 50%, 50%);">x</span>')
+  })
 })
