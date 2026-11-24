@@ -34,4 +34,9 @@ describe('emailHtmlToText', () => {
   it('collapses source whitespace', () => {
     expect(emailHtmlToText('<p>\n  Hello\n  there  </p>\n<p> again</p>')).toBe('Hello there\n\nagain')
   })
+
+  it('tableCellsOnTheirOwnLines', () => {
+    expect(emailHtmlToText('<p>Hi</p><br><table><tr><td><b>DevFest Team</b></td><td><span>GDG Cloud</span></td></tr></table>'))
+      .toBe('Hi\n\nDevFest Team\nGDG Cloud')
+  })
 })

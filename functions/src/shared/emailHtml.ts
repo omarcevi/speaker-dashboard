@@ -1,7 +1,7 @@
 // Shared with the web app (Vite bundles it, so the editor preview matches what the server sends). Server-safe and
 // browser-safe: no Node imports. May import only ../model.js, ../talkKey.js and other files in shared/ or email/fillIns.js.
 
-import { FilterXSS, escapeAttrValue } from 'xss'
+import { FilterXSS, escapeAttrValue, friendlyAttrValue } from 'xss'
 import { fillInParts, fillInsIn, toHtml } from '../email/fillIns.js'
 
 const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'hr', 'span', 'div']
@@ -16,25 +16,77 @@ const SAFE_URL: Record<string, RegExp> = {
   img: /^https?:\/\//i,
 }
 
+const SAFE_SRC = (tag: string, value: string) => (SAFE_URL[tag]?.test(value.trim()) ? undefined : '')
+
 const filter = new FilterXSS({
   whiteList,
   stripIgnoreTag: true, // unknown tags are unwrapped: the tag goes, its text stays
   stripIgnoreTagBody: ['script', 'style'], // these go with their contents
   // Drop a link or image whose address is not allowed (an empty string removes the attribute).
   onTagAttr(tag, name, value) {
-    if (name === 'href' || name === 'src') return SAFE_URL[tag]?.test(value.trim()) ? undefined : ''
+    if (name === 'href' || name === 'src') return SAFE_SRC(tag, value)
     return undefined
   },
   // The default only accepts a lower-case scheme and would leave a bare href, so href and src are checked above.
   safeAttrValue: (_tag, name, value) => (name === 'href' || name === 'src' ? escapeAttrValue(value.trim()) : escapeAttrValue(value)),
 })
 
-// Opening <a href="..."> tags in the filter's output get target and rel. The output is already sanitized, so every
-// attribute value is quoted and free of raw quotes.
-const addLinkAttrs = (html: string) => html.replace(/<a href="[^"]*"/g, (m) => `${m} target="_blank" rel="noopener noreferrer"`)
+// Opening <a ... href="..."> tags in the filter's output get target and rel. The output is already sanitized, so every
+// attribute value is quoted and free of raw quotes and angle brackets.
+const addLinkAttrs = (html: string) => html.replace(/<a (?=[^>]*\bhref=")([^>]*)>/g, '<a $1 target="_blank" rel="noopener noreferrer">')
+const dropBareImages = (html: string) => html.replace(/<img(?![^>]*\ssrc=)[^>]*>/g, '')
 
 /** Email HTML restricted to the allowed tags and attributes; everything else is removed or unwrapped. */
-export const cleanEmailHtml = (html: string): string => addLinkAttrs(filter.process(html)).replace(/<img(?![^>]*\ssrc=)[^>]*>/g, '')
+export const cleanEmailHtml = (html: string): string => dropBareImages(addLinkAttrs(filter.process(html)))
+
+// The signature may also keep a table layout and inline styles (a Gmail signature: logo, divider, title, links).
+const TABLE_TAGS = ['table', 'tbody', 'thead', 'tr', 'td', 'th']
+const STYLED = ['p', 'div', 'span', 'a', 'strong', 'b', 'em', 'i', 'table', 'tr', 'td', 'th', 'img', 'h1', 'h2', 'h3']
+const CELL_ATTRS = ['width', 'height', 'align', 'valign', 'colspan', 'rowspan', 'cellpadding', 'cellspacing', 'border']
+
+const signatureWhiteList: Record<string, string[]> = Object.fromEntries(
+  [...ALLOWED_TAGS, ...TABLE_TAGS].map((t) => [t, [...(whiteList[t] ?? [])]]),
+)
+for (const t of ['table', 'td', 'th']) signatureWhiteList[t].push(...CELL_ATTRS)
+for (const t of STYLED) signatureWhiteList[t].push('style')
+
+const sides = (p: string) => [p, `${p}-top`, `${p}-right`, `${p}-bottom`, `${p}-left`]
+const CSS_PROPS = [
+  'color', 'background-color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing',
+  'text-decoration', 'text-align', 'vertical-align', 'width', 'height', 'max-width', 'min-width',
+  ...sides('padding'), ...sides('margin'), ...sides('border'),
+  'border-color', 'border-width', 'border-style', 'border-collapse', 'border-spacing', 'border-radius', 'white-space',
+]
+const cssWhiteList: Record<string, true | ((v: string) => boolean)> = Object.fromEntries(CSS_PROPS.map((p) => [p, true]))
+cssWhiteList.display = (v) => /^(block|inline|inline-block|table|table-cell|none)$/i.test(v.trim())
+
+// A value that could load something, run something or escape the declaration is dropped. Named character references
+// (&lpar;, &bsol;) are not decoded before this check, so any & is refused; the only functions allowed are colours.
+const UNSAFE_CSS = /url\(|expression|javascript:|@import|\\|<|\/\*|&/i
+const COLOUR_FN = /(rgba?|hsla?)\(\s*[\d.%,\s]*\)/gi
+const unsafeCss = (value: string) => UNSAFE_CSS.test(value) || /[()]/.test(value.replace(COLOUR_FN, ''))
+
+const signatureFilter = new FilterXSS({
+  whiteList: signatureWhiteList,
+  stripIgnoreTag: true,
+  stripIgnoreTagBody: ['script', 'style'],
+  css: { whiteList: cssWhiteList, safeAttrValue: (_name: string, value: string) => (unsafeCss(value) ? '' : value) },
+  onTagAttr(tag, name, value) {
+    if (name === 'href' || name === 'src') return SAFE_SRC(tag, value)
+    return undefined
+  },
+  // A style is decoded first (&#92; is a backslash), then each declaration goes through the CSS filter above, so one
+  // bad declaration drops only itself.
+  safeAttrValue: (_tag, name, value, cssFilter) =>
+    name === 'style' ? escapeAttrValue(cssFilter.process(friendlyAttrValue(value)))
+    : name === 'href' || name === 'src' ? escapeAttrValue(value.trim()) : escapeAttrValue(value),
+})
+
+/**
+ * The team signature: everything cleanEmailHtml keeps, plus tables and a limited set of inline styles, so a
+ * two-column signature keeps its layout.
+ */
+export const cleanSignatureHtml = (html: string): string => dropBareImages(addLinkAttrs(signatureFilter.process(html)))
 
 /** True when the cleaned HTML has no text and no image. */
 export function isBlankHtml(html: string): boolean {
@@ -53,19 +105,41 @@ const escapeValue = (s: string) => escapeHtml(s).replace(/\r\n?|\n/g, '<br>')
 
 export type RenderedHtml = { ok: true; subject: string; html: string } | { ok: false; missing: string[]; empty: string[] }
 
+// A signature fill-in inside a tag (an attribute value such as style or href) could add declarations or attributes,
+// so it is refused: it is reported like a malformed fill-in, under this label, and left unfilled.
+const inTagLabel = (text: string) => `${text} inside an HTML tag`
+const MARK = /\uE000(\d+)\uE001/g
+
+// The signature is cleaned with each fill-in replaced by a marker, and the values go in afterwards, into the text
+// between tags only. The cleaned output is well formed (attribute values are quoted and escaped), so a marker left
+// inside a tag is a fill-in inside an attribute.
+function signatureParts(signatureHtml: string) {
+  const parts = fillInParts(signatureHtml.replace(/[\uE000\uE001]/g, ''))
+  const marked = parts.map((p, i) => (p.kind === 'fill' ? `\uE000${i}\uE001` : p.text)).join('')
+  const pieces = cleanSignatureHtml(marked).split(/(<[^>]*>)/)
+  const inTag = [...new Set(pieces.filter((_, i) => i % 2).flatMap((tag) => [...tag.matchAll(MARK)].map((m) => inTagLabel(parts[+m[1]].text))))]
+  const render = (value: (name: string) => string) => pieces.map((piece, i) => piece.replace(MARK, (_, n: string) => {
+    const p = parts[+n]
+    return i % 2 || p.kind !== 'fill' ? p.text : value(p.name)
+  })).join('')
+  return { inTag, render }
+}
+
 /**
  * Fills the subject (plain text), body and signature (escaped HTML) and appends the signature. Missing and empty
- * fill-ins, the signature's included, are reported exactly as renderEmail does.
+ * fill-ins, the signature's included, are reported exactly as renderEmail does. A signature fill-in inside a tag
+ * blocks the email.
  */
 export function renderHtmlEmail(t: { subject: string; html: string }, values: Record<string, string>, signatureHtml: string): RenderedHtml {
   const signed = !isBlankHtml(signatureHtml)
-  const names = [...new Set([...fillInsIn(t.subject), ...fillInsIn(t.html), ...(signed ? fillInsIn(signatureHtml) : [])])]
+  const sig = signed ? signatureParts(signatureHtml) : null
+  const names = [...new Set([...fillInsIn(t.subject), ...fillInsIn(t.html), ...(sig ? [...fillInsIn(signatureHtml), ...sig.inTag] : [])])]
   const has = (n: string) => Object.prototype.hasOwnProperty.call(values, n)
   const missing = names.filter((n) => !has(n))
   const empty = names.filter((n) => has(n) && values[n].trim() === '')
   if (missing.length || empty.length) return { ok: false, missing, empty }
   const fill = (s: string, value: (v: string) => string) => fillInParts(s).map((p) => (p.kind === 'fill' ? value(values[p.name]) : p.text)).join('')
   const body = cleanEmailHtml(fill(t.html, escapeValue))
-  const signature = signed ? `<br>${cleanEmailHtml(fill(signatureHtml, escapeValue))}` : ''
+  const signature = sig ? `<br>${sig.render((n) => escapeValue(values[n]))}` : ''
   return { ok: true, subject: fill(t.subject, (v) => v), html: body + signature }
 }

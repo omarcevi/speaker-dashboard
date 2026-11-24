@@ -245,3 +245,6 @@ export function bounceSummary(text: string, max = 300): string {
   const out = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '').slice(0, 4).join('\n')
   return out.length > max ? `${out.slice(0, max - 1).trimEnd()}…` : out
 }
+
+/** True when a signature has a table or inline styles, which the visual editor would drop: it is edited as HTML. */
+export const usesSignatureLayout = (html: string): boolean => /<table\b|<[a-z][^>]*\sstyle\s*=/i.test(html)
