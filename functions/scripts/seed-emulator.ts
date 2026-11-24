@@ -71,6 +71,7 @@ async function seedEmail() {
       { key: 'eventDate', label: 'Event date', value: '1 December 2026' },
       { key: 'venue', label: 'Venue', value: 'Example Hall' },
     ],
+    signatureHtml: '<p><strong>DevFest Istanbul Speaker Team</strong><br>speakers@example.org</p>',
     updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
   });
   const review = { updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User' };

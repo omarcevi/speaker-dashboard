@@ -157,6 +157,8 @@ The owner does these steps once:
    ```
    This adds the send queue (every minute) and the reply check (every 5 minutes). Within a minute, the send queue creates the **Acceptance** and **Decline** templates with placeholder text, and empty event settings (event name, date, venue). Fill in the event settings and edit the templates before sending.
 
+**Team signature and images.** Emails are sent as HTML, and plain text is included for mail apps that need it. The team signature is edited under **Emails → Event settings** (Team signature). It is added to the end of every email, replies included, so leave it out of the templates. Images are uploaded in the editor (admins only, image files under 5 MB). They are stored in Firebase Storage under `emailImages/` and linked by their download URL, so deploy `storage` too. The previews show the exact HTML that is sent. Outlook may ask readers to show images, so don't rely on an image for anything important.
+
 Locally, the emulator also has two admin-only callables for testing: `devInjectMail({ threadId, kind: 'reply' | 'bounce', text })` adds a fake reply or bounce to a thread, and `devRunMail()` runs the send queue and the reply check once. Neither is deployed.
 
 ## AI assist
