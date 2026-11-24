@@ -117,6 +117,7 @@ describe('assistReply', () => {
     expect(seen).toEqual({
       reply: 'Can I bring my laptop?', quoted: '> old',
       previousTeam: { subject: 'Re: Welcome Ada (dinner)', text: 'We also have a speaker dinner.' },
+      earlier: [],
     })
   })
 
@@ -126,6 +127,37 @@ describe('assistReply', () => {
     let seen: DecisionInput | undefined
     await run({ ...base, decide: async (i) => { seen = i; return base.decide(i) } })
     expect(seen!.previousTeam).toEqual({ subject: 'Welcome Ada', text: 'Hello Ada, you are in.' })
+  })
+
+  it('never clears a thank-you that follows an unanswered question', async () => {
+    await message('th-1', 'm0', 'reply', T0 + 5 * MIN, 'Can I bring my laptop?')
+    await withReply('Many thanks!')
+    const base = fakeReplyAi()
+    let seen: DecisionInput | undefined
+    const result = await run({ ...base, decide: async (i) => { seen = i; return base.decide(i) } })
+    expect(result).not.toBe('cleared')
+    expect(seen!.earlier).toEqual(['Can I bring my laptop?'])
+    const t = await threadDoc()
+    expect(t.ai).toMatchObject({ messageId: 'm1', label: 'no_answer_needed' })
+    expect(t.settled).toBeUndefined()
+  })
+
+  it('never clears a thank-you that follows an unanswered withdrawal', async () => {
+    await message('th-1', 'm0', 'reply', T0 + 5 * MIN, 'Sorry, I have to withdraw')
+    await withReply('Many thanks!')
+    expect(await run(fakeReplyAi())).not.toBe('cleared')
+    expect((await threadDoc()).settled).toBeUndefined()
+  })
+
+  it('still clears a single thank-you after the team answered an earlier reply', async () => {
+    await message('th-1', 'm0', 'reply', T0 + 2 * MIN, 'Can I bring my laptop?')
+    await message('th-1', 'mt', 'team', T0 + 5 * MIN, 'Yes you can.')
+    await withReply('Many thanks!')
+    const base = fakeReplyAi()
+    let seen: DecisionInput | undefined
+    expect(await run({ ...base, decide: async (i) => { seen = i; return base.decide(i) } })).toBe('cleared')
+    expect(seen!.earlier).toEqual([])
+    expect((await threadDoc()).settled).toMatchObject({ messageId: 'm1', by: 'ai' })
   })
 
   it('skips a reply that is not the newest', async () => {

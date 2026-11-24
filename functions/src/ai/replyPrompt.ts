@@ -1,6 +1,12 @@
 import { escapeAngles } from './inputs.js';
 
-export interface DecisionInput { reply: string; quoted: string; previousTeam: { subject: string; text: string } | null }
+export interface DecisionInput {
+  reply: string;
+  quoted: string;
+  previousTeam: { subject: string; text: string } | null;
+  /** The speaker's earlier replies since the team last wrote, oldest first (not including `reply`). */
+  earlier: string[];
+}
 export interface DraftInput {
   facts: string;
   eventFields: { label: string; value: string }[];
@@ -13,6 +19,8 @@ export const REPLY_CAP = 8000;
 export const QUOTED_CAP = 2000;
 export const PREVIOUS_CAP = 4000;
 export const CONVERSATION_CAP = 30_000;
+export const EARLIER_CAP = 2000;
+export const EARLIER_TOTAL_CAP = 6000;
 
 export const DECISION_INSTRUCTIONS = "What does the DevFest Istanbul speaker team need to do about this speaker's latest email?";
 export const DECISION_CRITERIA = {
@@ -34,11 +42,25 @@ export const DRAFT_SYSTEM = [
 
 const clean = (s: string) => escapeAngles(s);
 
-/** The newest reply goes first, without the quoted history; the quote is a fallback only when the reply is empty. */
+/**
+ * The newest reply goes first, without the quoted history; the quote is a fallback only when the reply is empty.
+ * Earlier unanswered speaker messages, when there are any, go before it (the newest of them that fit), labelled.
+ */
 export function decisionText(i: DecisionInput): string {
   const reply = i.reply.trim();
   const body = reply ? reply.slice(0, REPLY_CAP) : i.quoted.trim().slice(0, QUOTED_CAP);
-  let out = clean(body);
+  const earlier: string[] = [];
+  let size = 0;
+  for (const e of [...i.earlier].reverse()) {
+    const t = e.trim().slice(0, EARLIER_CAP);
+    if (!t) continue;
+    if (size + t.length > EARLIER_TOTAL_CAP) break;
+    earlier.unshift(clean(t));
+    size += t.length;
+  }
+  let out = earlier.length
+    ? `Earlier unanswered messages from the speaker, oldest first:\n\n${earlier.join('\n\n---\n\n')}\n\nNewest message from the speaker:\n${clean(body)}`
+    : clean(body);
   if (i.previousTeam) {
     out += `\n\nPrevious message from the team (subject: ${clean(i.previousTeam.subject)}):\n${clean(i.previousTeam.text.slice(0, PREVIOUS_CAP))}`;
   }

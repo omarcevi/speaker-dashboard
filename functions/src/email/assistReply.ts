@@ -32,7 +32,7 @@ export function replyErrorCode(e: unknown): string {
   return 'unknown'
 }
 
-interface Entry { from: 'team' | 'speaker'; at: number; subject: string; text: string }
+interface Entry { id: string; from: 'team' | 'speaker'; at: number; subject: string; text: string }
 
 /** This thread's messages (bounces left out) and its sent emails, oldest first. Never reads another thread. */
 async function history(db: Firestore, threadId: string): Promise<Entry[]> {
@@ -44,22 +44,29 @@ async function history(db: Firestore, threadId: string): Promise<Entry[]> {
   for (const d of msgs.docs) {
     const m = d.data() as ReceivedMessage
     if (m.kind === 'bounce') continue
-    out.push({ from: m.kind === 'reply' ? 'speaker' : 'team', at: m.at.toMillis(), subject: m.subject ?? '', text: m.text ?? '' })
+    out.push({ id: d.id, from: m.kind === 'reply' ? 'speaker' : 'team', at: m.at.toMillis(), subject: m.subject ?? '', text: m.text ?? '' })
   }
   for (const d of emails.docs) {
     const e = d.data() as EmailDoc
     if (e.state !== 'sent' || !e.sentAt) continue
-    out.push({ from: 'team', at: e.sentAt.toMillis(), subject: e.subject ?? '', text: e.text ?? '' })
+    out.push({ id: `email:${d.id}`, from: 'team', at: e.sentAt.toMillis(), subject: e.subject ?? '', text: e.text ?? '' })
   }
   return out.sort((a, b) => a.at - b.at)
 }
 
-function decisionInput(reply: ReceivedMessage, past: Entry[]): DecisionInput {
+/** The speaker's replies after the team last wrote (before `messageId`), oldest first: still unanswered. */
+function earlierUnanswered(messageId: string, at: number, past: Entry[]): Entry[] {
+  const teamAt = past.filter((x) => x.from === 'team' && x.at < at).at(-1)?.at ?? -Infinity
+  return past.filter((x) => x.from === 'speaker' && x.id !== messageId && x.at > teamAt && x.at <= at)
+}
+
+function decisionInput(messageId: string, reply: ReceivedMessage, past: Entry[]): DecisionInput {
   const at = reply.at.toMillis()
   const team = past.filter((x) => x.from === 'team' && x.at < at).at(-1)
   return {
     reply: reply.text ?? '', quoted: reply.quoted ?? '',
     previousTeam: team ? { subject: team.subject, text: team.text } : null,
+    earlier: earlierUnanswered(messageId, at, past).map((x) => x.text),
   }
 }
 
@@ -130,9 +137,12 @@ async function assess(db: Firestore, ai: ReplyAi, p: { threadId: string; message
   if (!thread || thread.lastReplyId !== messageId || !unread(thread) || reply?.kind !== 'reply') return 'stale'
 
   const past = await history(db, threadId)
+  const input = decisionInput(messageId, reply, past)
+  // More than one unanswered reply: a newer "thanks" must never clear an earlier question or withdrawal.
+  const mayClear = input.earlier.length === 0
   let decision
   try {
-    decision = await ai.decide(decisionInput(reply, past))
+    decision = await ai.decide(input)
   } catch (e) {
     const error = replyErrorCode(e)
     console.error(`Reply assist: decision failed thread=${threadId} (${error})`)
@@ -142,7 +152,7 @@ async function assess(db: Firestore, ai: ReplyAi, p: { threadId: string; message
 
   const { probabilities, confidence, model } = decision
   const reading: ReplyReading = { messageId, label: topLabel(probabilities), probabilities, confidence, model, at, error: null }
-  if (autoClears(probabilities)) {
+  if (mayClear && autoClears(probabilities)) {
     return (await writeIfCurrent(db, threadId, messageId, { ai: reading }, at, unread)) ? 'cleared' : 'stale'
   }
   if (!wantsDraft(probabilities)) {

@@ -7,7 +7,7 @@ import type { GenAiLike } from '../src/ai/client';
 const probs = { needs_answer: 0.7, no_answer_needed: 0.2, withdrawing: 0.05, unclear: 0.05 };
 const ok = (answers: any) => new Response(JSON.stringify({ answers }), { status: 200 });
 const okProbs = (p: any = probs, c: any = 0.8) => ok({ action: { type: 'choice', choice: 'needs_answer', probabilities: p, confidence: c } });
-const input = { reply: 'Hi there?', quoted: '', previousTeam: null };
+const input = { reply: 'Hi there?', quoted: '', previousTeam: null, earlier: [] };
 
 function mk(fetchFn: any, genai?: GenAiLike) {
   return liveReplyAi({ apiKey: 'k', project: 'p', fetchFn, genai: genai ?? ({ models: {} } as any) });
@@ -56,7 +56,7 @@ describe('decide', () => {
 
 describe('decisionText', () => {
   it('puts the unquoted reply first, caps and escapes', () => {
-    const t = decisionText({ reply: '<b>hi</b>' + 'x'.repeat(9000), quoted: 'old', previousTeam: { subject: 'S<', text: 'y'.repeat(5000) } });
+    const t = decisionText({ reply: '<b>hi</b>' + 'x'.repeat(9000), quoted: 'old', previousTeam: { subject: 'S<', text: 'y'.repeat(5000) }, earlier: [] });
     expect(t.startsWith('&lt;b&gt;hi')).toBe(true);
     expect(t).not.toContain('<b>');
     expect(t.match(/x/g)!.length).toBeLessThanOrEqual(8000);
@@ -65,8 +65,24 @@ describe('decisionText', () => {
     expect(t).not.toContain('old');
   });
   it('uses the first 2000 chars of quoted when reply is blank', () => {
-    const t = decisionText({ reply: '  ', quoted: 'q'.repeat(3000), previousTeam: null });
+    const t = decisionText({ reply: '  ', quoted: 'q'.repeat(3000), previousTeam: null, earlier: [] });
     expect(t.match(/q/g)!.length).toBe(2000);
+  });
+  it('puts earlier unanswered speaker messages, oldest first and labelled, before the newest reply', () => {
+    const t = decisionText({ reply: 'NEWEST thanks', quoted: '', previousTeam: null, earlier: ['FIRST <q>?', 'SECOND'] });
+    expect(t).toMatch(/earlier unanswered messages from the speaker/i);
+    expect(t.indexOf('FIRST')).toBeLessThan(t.indexOf('SECOND'));
+    expect(t.indexOf('SECOND')).toBeLessThan(t.indexOf('NEWEST'));
+    expect(t).toContain('&lt;q&gt;');
+    expect(t).toMatch(/newest message from the speaker/i);
+  });
+  it('caps each earlier message at 2000 chars and all of them at 6000, keeping the newest', () => {
+    const earlier = ['①' + '1'.repeat(2999), '②' + '2'.repeat(2999), '③' + '3'.repeat(2999), '④' + '4'.repeat(2999)];
+    const t = decisionText({ reply: 'hi', quoted: '', previousTeam: null, earlier });
+    expect(t.match(/4/g)!.length).toBe(1999);
+    for (const m of ['②', '③', '④']) expect(t).toContain(m);
+    expect(t).not.toContain('①');
+    expect(t.indexOf('②')).toBeLessThan(t.indexOf('④'));
   });
 });
 
@@ -114,7 +130,7 @@ describe('draft', () => {
 });
 
 describe('fakeReplyAi', () => {
-  const d = (reply: string) => fakeReplyAi().decide({ reply, quoted: '', previousTeam: null });
+  const d = (reply: string) => fakeReplyAi().decide({ reply, quoted: '', previousTeam: null, earlier: [] });
   it('classifies by keyword', async () => {
     expect((await d('I must withdraw')).probabilities.withdrawing).toBe(0.9);
     expect((await d('Thanks!')).probabilities.no_answer_needed).toBe(0.97);
@@ -124,7 +140,7 @@ describe('fakeReplyAi', () => {
   });
   it('counts calls and fails on substring', async () => {
     const f = fakeReplyAi({ fail: new Set(['BOOM']) });
-    await expect(f.decide({ reply: 'BOOM', quoted: '', previousTeam: null })).rejects.toThrow();
+    await expect(f.decide({ reply: 'BOOM', quoted: '', previousTeam: null, earlier: [] })).rejects.toThrow();
     await expect(f.draft({ facts: 'BOOM', eventFields: [], templates: [], speaker: { firstName: 'a', talkTitles: [] }, conversation: [] })).rejects.toThrow();
     expect(f.calls).toEqual({ decide: 1, draft: 1 });
     expect((await f.draft({ facts: '', eventFields: [], templates: [], speaker: { firstName: 'a', talkTitles: [] }, conversation: [] })).text).toBeTruthy();
