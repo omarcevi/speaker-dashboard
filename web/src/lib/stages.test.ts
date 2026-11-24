@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'vitest'
+import { speakerGroups } from '../../../functions/src/email/recipients.ts'
+import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
+import { buildCards } from '../../../functions/src/shared/cards.ts'
+import {
+  cellLabel, cellTone, dueLabel, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary,
+  type Cell, type Exceptions, type StageRow,
+} from './stages.ts'
+import { fakeSub } from './testing.ts'
+
+const ts = (ms: number) => ({ toMillis: () => ms })
+const day = (d: number, h = 9, m = 10) => Date.UTC(2026, m, d, h)
+const NOV4 = day(4)
+const NOV3 = day(3)
+
+function email(over: Partial<EmailDoc> = {}): EmailDoc {
+  return {
+    batchId: 'b1', speakerKey: 'ada@example.com', to: 'ada@example.com', cc: [], templateId: 'pres2', templateName: 'Presentation',
+    rule: 'approved', isDecision: false, talkIds: [], subject: null, text: null, html: null, attachments: [], sendAt: ts(NOV4), state: 'sent',
+    reason: null, manual: false, replyToThreadId: null, gmailMessageId: null, threadId: null, rfcMessageId: null,
+    claimedAt: null, sentAt: ts(NOV4), bounce: null, replyCount: 0, lastReplyAt: null, by: 'u', byName: 'U', createdAt: ts(0), ...over,
+  }
+}
+const at = (n: number): Partial<EmailDoc> => ({ sentAt: ts(n), sendAt: ts(n) })
+const bounce = { reason: 'x', at: ts(1) }
+const thread = (reply: number | null, team: number | null): ThreadDoc => ({
+  speakerKey: 'ada@example.com', firstSentAt: ts(0), lastCheckedAt: null, seenIds: [], lastReplyAt: reply === null ? null : ts(reply),
+  lastTeamAt: team === null ? null : ts(team), lastSnippet: '',
+})
+
+const today = '2026-12-02'
+const pres: Stage = { id: 'pres', name: 'Presentation request', templateIds: ['pres2', 'pres1'], dueFrom: '2026-11-25', appliesTo: 'everyone' }
+const none = new Map<string, ThreadDoc>()
+const cell = (emails: EmailDoc[], o: { stage?: Partial<Stage>; ex?: Exceptions; threads?: Map<string, ThreadDoc>; key?: string; today?: string } = {}) =>
+  stageCell({ stage: { ...pres, ...o.stage }, speakerKey: o.key ?? 'ada@example.com', exceptions: o.ex, emails, threads: o.threads ?? none, today: o.today ?? today })
+const exc = (e: Partial<Exceptions>): Exceptions => ({ skipped: [], added: [], ...e })
+
+describe('stageCell', () => {
+  it('skippedBeatsEmail', () => { expect(cell([email()], { ex: exc({ skipped: ['pres'] }) }).kind).toBe('skipped') })
+  it('addedStageNotAdded', () => {
+    const stage = { appliesTo: 'added' as const }
+    expect(cell([], { stage }).kind).toBe('notFor')
+    expect(cell([], { stage, ex: exc({ added: ['pres'] }) }).kind).toBe('missing')
+  })
+  it('danglingExceptionIgnored', () => { expect(cell([], { ex: exc({ skipped: ['gone'], added: ['gone'] }) }).kind).toBe('missing') })
+  it('bounced', () => { expect(cell([email({ bounce })]).kind).toBe('bounced') })
+  it('problem', () => {
+    for (const state of ['failed', 'unknown', 'held'] as const) expect(cell([email({ state })]).kind).toBe('problem')
+  })
+  it('answerNeeded', () => {
+    expect(cell([email({ threadId: 't1' })], { threads: new Map([['t1', thread(10, 5)]]) }).kind).toBe('answer')
+  })
+  it('tieIsAnswered', () => {
+    expect(cell([email({ threadId: 't1' })], { threads: new Map([['t1', thread(10, 10)]]) }).kind).toBe('replied')
+  })
+  it('replied', () => {
+    expect(cell([email({ threadId: 't1' })], { threads: new Map([['t1', thread(5, 10)]]) }).kind).toBe('replied')
+  })
+  it('sent', () => {
+    const c = cell([email()])
+    expect(c.kind).toBe('sent')
+    expect(cellLabel(c)).toBe('Sent 4 Nov')
+  })
+  it('manualNeverReplied', () => {
+    const c = cell([email({ manual: true, threadId: null, ...at(NOV3) })])
+    expect(c.kind).toBe('manual')
+    expect(cellLabel(c)).toBe('Marked sent 3 Nov')
+  })
+  it('scheduled', () => {
+    const sendAt = Date.UTC(2026, 11, 2, 6)
+    const c = cell([email({ state: 'scheduled', sentAt: null, sendAt: ts(sendAt) })])
+    expect(c.kind).toBe('scheduled')
+    expect(c.at).toBe(sendAt)
+    expect(cellLabel(c)).toBe('Scheduled 2 Dec')
+    for (const state of ['queued', 'sending'] as const) {
+      const s = cell([email({ state, sentAt: null })])
+      expect(s.kind).toBe('sending')
+      expect(cellLabel(s)).toBe('Sending')
+    }
+  })
+  it('oldTemplateCounts', () => { expect(cell([email({ templateId: 'pres1' })]).kind).toBe('sent') })
+  it('otherTemplateIgnored', () => { expect(cell([email({ templateId: 'acc' })]).kind).toBe('missing') })
+  it('cancelledIgnored', () => {
+    expect(cell([email({ state: 'cancelled', sentAt: null })]).kind).toBe('missing')
+    expect(cell([email(at(10)), email({ state: 'cancelled', sentAt: null, sendAt: ts(20) })]).kind).toBe('sent')
+  })
+  it('successfulSendWins', () => {
+    expect(cell([email(at(10)), email({ state: 'failed', ...at(20) })]).kind).toBe('sent')
+    expect(cell([email({ bounce, ...at(5) }), email(at(10))]).kind).toBe('sent')
+    const c = cell([email(at(5)), email({ bounce, ...at(20) })])
+    expect(c.kind).toBe('sent')
+    expect(c.at).toBe(5)
+  })
+  it('latestWhenNoSuccess', () => {
+    expect(cell([email({ state: 'failed', ...at(10) }), email({ state: 'scheduled', sentAt: null, sendAt: ts(20) })]).kind).toBe('scheduled')
+    expect(cell([email({ state: 'failed', ...at(10) }), email({ bounce, ...at(20) })]).kind).toBe('bounced')
+  })
+  it('dueOnTheDay', () => {
+    expect(cell([], { stage: { dueFrom: '2026-12-02' } }).kind).toBe('missing')
+    const due = cell([], { stage: { dueFrom: '2026-12-03' } })
+    expect(due.kind).toBe('due')
+    expect(cellLabel(due)).toBe('Due 3 Dec')
+    const blank = cell([], { stage: { dueFrom: null } })
+    expect(blank.kind).toBe('blank')
+    expect(cellLabel(blank)).toBe('')
+  })
+  it('ccSuccessCounts', () => {
+    expect(cell([email({ speakerKey: 'bob@example.com', to: 'bob@example.com', cc: ['Ada@Example.com'] })]).kind).toBe('sent')
+  })
+  it('ccProblemIgnored', () => {
+    const base = { speakerKey: 'bob@example.com', to: 'bob@example.com', cc: ['Ada@Example.com'] }
+    expect(cell([email({ ...base, bounce })]).kind).toBe('missing')
+    expect(cell([email({ ...base, state: 'failed' })]).kind).toBe('missing')
+  })
+  it('tolerates malformed input', () => {
+    const bad = { id: 'pres', name: 'x', appliesTo: 'everyone', dueFrom: undefined } as unknown as Stage
+    expect(cell([email({ cc: undefined as never, templateId: null })], { stage: bad, ex: { skipped: 'x', added: null } as never }).kind).toBe('blank')
+  })
+})
+
+const subs = [
+  fakeSub({ id: 'a1', row: 2, speakerKey: 'ada@example.com', firstName: 'Ada', lastName: 'Zed', email: 'ada@example.com' }),
+  fakeSub({ id: 'b1', row: 3, speakerKey: 'bo@example.com', firstName: 'Bo', email: 'bo@example.com' }),
+  fakeSub({ id: 'c1', row: 4, speakerKey: 'cem@example.com', firstName: 'Cem', email: 'cem@example.com' }),
+  fakeSub({ id: 'd1', row: 5, speakerKey: 'dee@example.com', firstName: 'Dee', email: 'dee@example.com' }),
+  fakeSub({ id: 'e1', row: 6, speakerKey: 'eve@example.com', firstName: 'Eve', email: 'eve@example.com' }),
+]
+const groups = speakerGroups(buildCards(subs, () => false))
+const statuses: Record<string, Status> = { a1: 'approved', b1: 'pending', c1: 'declined', d1: 'declined', e1: 'declined' }
+const rowsOf = (emails: EmailDoc[], now = Date.UTC(2026, 11, 2, 12), stage: Stage = pres) =>
+  stageRows({ stages: [stage], groups, status: (id) => statuses[id] ?? 'pending', emails, threads: none, exceptions: new Map(), now })
+
+describe('stageRows', () => {
+  it('whoAppears', () => {
+    const rows = rowsOf([
+      email({ speakerKey: 'cem@example.com', rule: 'acceptance', templateId: 'acc' }),
+      email({ speakerKey: 'dee@example.com', rule: 'decline', templateId: 'dec' }),
+      email({ speakerKey: 'eve@example.com', rule: 'acceptance', templateId: 'acc', state: 'scheduled', sentAt: null }),
+    ])
+    expect(rows.map((r) => [r.g.speakerKey, r.noApproved])).toEqual([['ada@example.com', false], ['cem@example.com', true]])
+  })
+  it('dueFlipsAtIstanbulMidnight', () => {
+    const stage = { ...pres, dueFrom: '2026-12-02' }
+    expect(rowsOf([], Date.UTC(2026, 11, 1, 20, 59), stage)[0].cells.pres.kind).toBe('due')
+    expect(rowsOf([], Date.UTC(2026, 11, 1, 21, 0), stage)[0].cells.pres.kind).toBe('missing')
+  })
+  it('counts a CC on a sent email and ignores malformed stages', () => {
+    const rows = stageRows({ stages: [pres, null as never, { id: 5 } as never], groups, status: (id) => statuses[id] ?? 'pending',
+      emails: [email({ speakerKey: 'bo@example.com', to: 'bo@example.com', cc: ['ADA@example.com'] })], threads: none, exceptions: new Map(), now: Date.UTC(2026, 11, 2, 12) })
+    expect(Object.keys(rows[0].cells)).toEqual(['pres'])
+    expect(rows[0].cells.pres.kind).toBe('sent')
+  })
+})
+
+const c = (kind: Cell['kind']): Cell => ({ kind, at: null, email: null })
+const row = (name: string, ...kinds: Cell['kind'][]): StageRow => ({
+  g: { speakerKey: name, name: { first: name, last: '' }, email: name, cards: [] }, noApproved: false,
+  cells: Object.fromEntries(kinds.map((k, i) => [i === 0 ? 'pres' : `s${i}`, c(k)])),
+})
+
+describe('rows and counts', () => {
+  it('sortRows', () => {
+    const rows = [row('Zed', 'sent'), row('Bea', 'sent'), row('Yan', 'missing'), row('Cal', 'missing'), row('Xia', 'bounced'), row('Abe', 'answer', 'missing')]
+    expect(sortRows(rows).map((r) => r.g.name.first)).toEqual(['Abe', 'Xia', 'Cal', 'Yan', 'Bea', 'Zed'])
+    expect(rowMissing(rows[3])).toBe(true)
+    expect(rowFollow(rows[3])).toBe(false)
+  })
+  it('stageCounts', () => {
+    const rows = (['sent', 'manual', 'answer', 'missing', 'bounced', 'skipped'] as const).map((k, i) => row(`n${i}`, k))
+    expect(stageCounts(rows, 'pres')).toEqual({ sent: 3, missing: 1, follow: 2 })
+  })
+  it('stageSummary', () => {
+    const f = '2026-12-11'
+    expect(stageSummary(pres, { sent: 20, missing: 2 }, today)).toBe('20 sent · 2 missing')
+    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 0, missing: 0 }, today)).toBe('due 11 Dec')
+    expect(stageSummary({ ...pres, dueFrom: null }, { sent: 0, missing: 0 }, today)).toBe('no due date')
+    expect(stageSummary({ ...pres, dueFrom: f }, { sent: 3, missing: 0 }, today)).toBe('3 sent · due 11 Dec')
+    expect(stageSummary(pres, { sent: 3, missing: 0 }, today)).toBe('3 sent')
+  })
+  it('labels and tones', () => {
+    expect(dueLabel('2026-12-01')).toBe('1 Dec')
+    expect(cellLabel(c('answer'))).toBe('Replied – needs an answer')
+    expect(cellTone(c('missing'))).toBe('warn')
+    expect(cellTone(c('replied'))).toBe('strong')
+    expect(cellTone(c('sending'))).toBe('line')
+    expect(cellTone(c('skipped'))).toBe('faint')
+    expect(cellTone(c('sent'))).toBe('')
+  })
+})
