@@ -121,7 +121,7 @@ export default function StagesPage() {
               </div>
             )}
           </div>
-          <div className="card table-card scroll-x grid-card">
+          <div className="card table-card grid-card">
             {shown.length === 0 ? (
               <div className="empty">
                 <b>{filter === 'missing' ? 'Nobody is missing an email' : filter === 'follow' ? 'Nobody needs a follow-up' : 'No speakers yet'}</b>
@@ -129,60 +129,63 @@ export default function StagesPage() {
               </div>
             ) : (
               <>
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="who" scope="col">Speaker</th>
-                      {stages.map((s) => {
-                        const c = stageCounts(rows, s.id)
-                        const template = templateOf(s)
-                        const missingKeys = c.missing > 0 ? rows.filter((r) => r.cells[s.id]?.kind === 'missing').map((r) => r.g.speakerKey) : []
+                {/* Only the table scrolls sideways; the footer stays the card's width, so no blank band under it. */}
+                <div className="grid-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th className="who" scope="col">Speaker</th>
+                        {stages.map((s) => {
+                          const c = stageCounts(rows, s.id)
+                          const template = templateOf(s)
+                          const missingKeys = c.missing > 0 ? rows.filter((r) => r.cells[s.id]?.kind === 'missing').map((r) => r.g.speakerKey) : []
+                          return (
+                            <th key={s.id} className="col" scope="col">
+                              <div className="name">{s.name}</div>
+                              <div className="sub">
+                                {stageSummary(s, c, today)}
+                                {s.appliesTo === 'added' && <><br />Only speakers added</>}
+                              </div>
+                              {!template && <div className="warn-line">Template deleted</div>}
+                              {admin && template && missingKeys.length > 0 && (
+                                <Link className="btn sm" to={sendLink(s.templateIds[0], missingKeys)}>Send to the {missingKeys.length} missing</Link>
+                              )}
+                            </th>
+                          )
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shown.map((r) => {
+                        const key = r.g.speakerKey
+                        const talk = talkOf(key)
+                        const name = `${r.g.name.first} ${r.g.name.last}`.trim()
                         return (
-                          <th key={s.id} className="col" scope="col">
-                            <div className="name">{s.name}</div>
-                            <div className="sub">
-                              {stageSummary(s, c, today)}
-                              {s.appliesTo === 'added' && <><br />Only speakers added</>}
-                            </div>
-                            {!template && <div className="warn-line">Template deleted</div>}
-                            {admin && template && missingKeys.length > 0 && (
-                              <Link className="btn sm" to={sendLink(s.templateIds[0], missingKeys)}>Send to the {missingKeys.length} missing</Link>
-                            )}
-                          </th>
+                          <tr key={key}>
+                            <th className="who" scope="row">
+                              <div className="cell-main">{talk ? <Link to={`/talk/${talk}`}>{name}</Link> : name}</div>
+                              {r.g.cards[0]?.company && <div className="cell-sub">{r.g.cards[0].company}</div>}
+                              {r.noApproved && <div className="mark"><b>No approved talk now</b></div>}
+                            </th>
+                            {stages.map((s) => {
+                              const cell = r.cells[s.id]
+                              const id = `${key}|${s.id}`
+                              const threadId = cell.email?.threadId ?? null
+                              const menuOn = menu?.key === key && menu.stageId === s.id
+                              return (
+                                <td key={s.id} data-cell={id}>
+                                  <StageCell cell={cell} admin={admin} expanded={pressed === id || menuOn}
+                                    onOpen={threadId ? () => { setPressed(id); setOpen(threadId) } : talk ? () => navigate(`/talk/${talk}`) : null}
+                                    onMenu={(anchor) => setMenu(menuOn ? null : { key, stageId: s.id, anchor })} />
+                                </td>
+                              )
+                            })}
+                          </tr>
                         )
                       })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.map((r) => {
-                      const key = r.g.speakerKey
-                      const talk = talkOf(key)
-                      const name = `${r.g.name.first} ${r.g.name.last}`.trim()
-                      return (
-                        <tr key={key}>
-                          <th className="who" scope="row">
-                            <div className="cell-main">{talk ? <Link to={`/talk/${talk}`}>{name}</Link> : name}</div>
-                            {r.g.cards[0]?.company && <div className="cell-sub">{r.g.cards[0].company}</div>}
-                            {r.noApproved && <div className="mark"><b>No approved talk now</b></div>}
-                          </th>
-                          {stages.map((s) => {
-                            const cell = r.cells[s.id]
-                            const id = `${key}|${s.id}`
-                            const threadId = cell.email?.threadId ?? null
-                            const menuOn = menu?.key === key && menu.stageId === s.id
-                            return (
-                              <td key={s.id} data-cell={id}>
-                                <StageCell cell={cell} admin={admin} expanded={pressed === id || menuOn}
-                                  onOpen={threadId ? () => { setPressed(id); setOpen(threadId) } : talk ? () => navigate(`/talk/${talk}`) : null}
-                                  onMenu={(anchor) => setMenu(menuOn ? null : { key, stageId: s.id, anchor })} />
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
                 <div className="table-foot">
                   <span>Click a sent cell to read the conversation. Click a Missing cell to act on it.</span>
                   <span>{plural(shown.length, 'speaker')}</span>

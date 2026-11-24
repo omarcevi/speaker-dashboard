@@ -588,6 +588,7 @@ html.projector .emails-card { display: none; }
 .sig-html .email-frame { min-height: 160px; }
 
 /* Stages grid */
+.grid-card .grid-scroll { overflow-x: auto; }
 .grid-card table { min-width: 880px; }
 .grid-card th, .grid-card td { vertical-align: middle; }
 .grid-card th.col { min-width: 168px; height: auto; padding: 12px 16px; vertical-align: top; }
@@ -624,8 +625,8 @@ html.projector .emails-card { display: none; }
 .stage .field + .field { margin-top: 0; }
 .stage .foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .stage .icon-btn { margin-left: 0; }
-select.input { padding-right: 8px; }
-.icon-btn[disabled] { opacity: .35; cursor: default; }
+.stage select.input { padding-right: 8px; }
+.stage .icon-btn[disabled] { opacity: .35; cursor: default; }
 .savebar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
 @media (max-width: 960px) { .stage .fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 @media (max-width: 720px) { .stage { grid-template-columns: minmax(0, 1fr); } .stage .ord { flex-direction: row; } .stage .fields { grid-template-columns: minmax(0, 1fr); } }
