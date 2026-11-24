@@ -112,6 +112,27 @@ describe('stageCell', () => {
     expect(cell([email({ ...base, bounce })]).kind).toBe('missing')
     expect(cell([email({ ...base, state: 'failed' })]).kind).toBe('missing')
   })
+  it('unansweredReplyStaysOnCell', () => {
+    const old = email({ templateId: 'pres1', threadId: 't1', ...at(10) })
+    const newer = email({ threadId: 't2', ...at(20) })
+    const threads = new Map([['t1', thread(15, 12)], ['t2', thread(null, null)]])
+    const c = cell([old, newer], { threads })
+    expect(c.kind).toBe('answer')
+    expect(c.email).toBe(old)
+  })
+  it('ccThreadNeverMakesAnswerOrReplied', () => {
+    const e = email({ speakerKey: 'bob@example.com', to: 'bob@example.com', cc: ['ada@example.com'], threadId: 't1' })
+    const threads = new Map([['t1', thread(10, 5)]])
+    const bob = cell([e], { threads, key: 'bob@example.com' })
+    const ada = cell([e], { threads })
+    expect([bob.kind, ada.kind]).toEqual(['answer', 'sent'])
+    const mk = (cl: Cell, k: string) => ({ ...row(k), cells: { pres: cl } })
+    expect(stageCounts([mk(bob, 'bob'), mk(ada, 'ada')], 'pres')).toEqual({ sent: 2, missing: 0, follow: 1 })
+  })
+  it('manualIgnoresThread', () => {
+    const c = cell([email({ manual: true, threadId: 't1' })], { threads: new Map([['t1', thread(10, 5)]]) })
+    expect(c.kind).toBe('manual')
+  })
   it('tolerates malformed input', () => {
     const bad = { id: 'pres', name: 'x', appliesTo: 'everyone', dueFrom: undefined } as unknown as Stage
     expect(cell([email({ cc: undefined as never, templateId: null })], { stage: bad, ex: { skipped: 'x', added: null } as never }).kind).toBe('blank')
@@ -176,6 +197,8 @@ describe('rows and counts', () => {
     expect(stageSummary({ ...pres, dueFrom: null }, { sent: 0, missing: 0 }, today)).toBe('no due date')
     expect(stageSummary({ ...pres, dueFrom: f }, { sent: 3, missing: 0 }, today)).toBe('3 sent · due 11 Dec')
     expect(stageSummary(pres, { sent: 3, missing: 0 }, today)).toBe('3 sent')
+    expect(stageSummary(pres, { sent: 0, missing: 4 }, today)).toBe('4 missing')
+    expect(stageSummary(pres, { sent: 0, missing: 0 }, today)).toBe('0 sent')
   })
   it('labels and tones', () => {
     expect(dueLabel('2026-12-01')).toBe('1 Dec')
@@ -184,6 +207,7 @@ describe('rows and counts', () => {
     expect(cellTone(c('replied'))).toBe('strong')
     expect(cellTone(c('sending'))).toBe('line')
     expect(cellTone(c('skipped'))).toBe('faint')
+    expect(cellTone(c('notFor'))).toBe('faint')
     expect(cellTone(c('sent'))).toBe('')
   })
 })

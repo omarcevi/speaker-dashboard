@@ -39,6 +39,14 @@ export function stageCell<E extends EmailDoc>(i: {
     return delivered(e) && list(e.cc).some((c) => c.toLowerCase() === speakerKey)
   })
   if (candidates.length > 0) {
+    // A reply that needs an answer stays on the cell until answered, whichever email it was on. Only the speaker's
+    // own emails count: a CC'd email's thread belongs to the main recipient. Manual entries have no thread.
+    const wroteLast = (e: E) => e.speakerKey === speakerKey && delivered(e) && !e.manual && !!e.threadId && speakerWroteLast(threads.get(e.threadId))
+    const unanswered = candidates.filter(wroteLast)
+    if (unanswered.length > 0) {
+      const e = latest(unanswered)
+      return { kind: 'answer', at: timeOf(e), email: e }
+    }
     const sent = candidates.filter(delivered)
     const e = latest(sent.length > 0 ? sent : candidates)
     const at = timeOf(e)
@@ -46,8 +54,7 @@ export function stageCell<E extends EmailDoc>(i: {
     switch (e.state) {
       case 'failed': case 'unknown': case 'held': return { kind: 'problem', at: null, email: e }
       case 'sent': {
-        const thread = e.threadId ? threads.get(e.threadId) : undefined
-        if (speakerWroteLast(thread)) return { kind: 'answer', at, email: e }
+        const thread = e.speakerKey === speakerKey && !e.manual && e.threadId ? threads.get(e.threadId) : undefined
         if (thread?.lastReplyAt) return { kind: 'replied', at, email: e }
         return { kind: e.manual ? 'manual' : 'sent', at, email: e }
       }
@@ -147,7 +154,7 @@ export function cellTone(c: Cell): '' | 'strong' | 'warn' | 'line' | 'faint' {
     case 'bounced': case 'problem': case 'answer': case 'missing': return 'warn'
     case 'replied': return 'strong'
     case 'scheduled': case 'sending': return 'line'
-    case 'due': case 'skipped': return 'faint'
+    case 'due': case 'skipped': case 'notFor': return 'faint'
     default: return ''
   }
 }
