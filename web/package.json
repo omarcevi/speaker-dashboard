@@ -11,6 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tiptap/extension-image": "^3.35.0",
+    "@tiptap/pm": "^3.35.0",
+    "@tiptap/react": "^3.35.0",
+    "@tiptap/starter-kit": "^3.35.0",
     "firebase": "^13.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
