@@ -3,7 +3,7 @@ import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
 import {
-  cellLabel, cellTone, dueLabel, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary,
+  cellLabel, cellTone, dueLabel, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, stagesProblem, withTemplate,
   type Cell, type Exceptions, type StageRow,
 } from './stages.ts'
 import { fakeSub } from './testing.ts'
@@ -231,5 +231,21 @@ describe('loading stages', () => {
     expect(toggled(['a', 'b'], 'a', false)).toEqual(['b'])
     expect(toggled(['a', 'b', 'a'], 'a', false)).toEqual(['b'])
     expect(toggled(['a'], 'b', true)).toEqual(['a', 'b'])
+  })
+})
+
+describe('manage stages helpers', () => {
+  it('withTemplateKeepsHistory', () => {
+    expect(withTemplate({ ...pres }, 'pres3').templateIds).toEqual(['pres3', 'pres2', 'pres1'])
+    expect(withTemplate(pres, 'pres1').templateIds).toEqual(['pres1', 'pres2'])
+  })
+  it('stagesProblem names the first problem', () => {
+    expect(stagesProblem([{ ...pres, name: '  ' }])).toBe('Every stage needs a name')
+    expect(stagesProblem([{ ...pres, templateIds: [] }])).toBe('Pick a template for Presentation request')
+    expect(stagesProblem([pres])).toBeNull()
+    expect(stagesProblem(Array.from({ length: 31 }, (_, i) => ({ ...pres, id: `s${i}` })))).toBe('At most 30 stages')
+  })
+  it('newStage starts blank on one template', () => {
+    expect(newStage('x', 't1')).toEqual({ id: 'x', name: '', templateIds: ['t1'], dueFrom: null, appliesTo: 'everyone' })
   })
 })

@@ -190,3 +190,19 @@ export function cellTone(c: Cell): '' | 'strong' | 'warn' | 'line' | 'faint' {
     default: return ''
   }
 }
+
+export const MAX_STAGES = 30 // the rules' cap
+
+/** `s` sending `templateId`; the templates it used before stay listed so past sends still count. */
+export const withTemplate = (s: Stage, templateId: string): Stage => ({ ...s, templateIds: [templateId, ...s.templateIds.filter((t) => t !== templateId)] })
+
+export const newStage = (id: string, templateId: string): Stage => ({ id, name: '', templateIds: [templateId], dueFrom: null, appliesTo: 'everyone' })
+
+/** Why `stages` can't be saved, or null. A stage whose current template was deleted may still be saved. */
+export function stagesProblem(stages: Stage[]): string | null {
+  for (const s of stages) {
+    if (s.name.trim() === '') return 'Every stage needs a name'
+    if (s.templateIds.length === 0) return `Pick a template for ${s.name}`
+  }
+  return stages.length > MAX_STAGES ? `At most ${MAX_STAGES} stages` : null
+}
