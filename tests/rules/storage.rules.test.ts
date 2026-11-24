@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc } from 'firebase/firestore';
-import { deleteObject, getBytes, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getBytes, getMetadata, ref, uploadBytes } from 'firebase/storage';
 
 let testEnv: RulesTestEnvironment;
 const read = (f: string) => readFileSync(fileURLToPath(new URL(`../../${f}`, import.meta.url)), 'utf8');
@@ -23,6 +23,7 @@ beforeAll(async () => {
     }
     await uploadBytes(ref(ctx.storage(), 'emailAttachments/t1/a.pdf'), new Uint8Array([1, 2, 3]), { contentType: 'application/pdf' });
     await uploadBytes(ref(ctx.storage(), 'emailImages/seed.png'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
+    await uploadBytes(ref(ctx.storage(), 'emailImages/del.png'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
     await uploadBytes(ref(ctx.storage(), 'photos/x'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
   });
 });
@@ -97,12 +98,15 @@ describe('email image rules', () => {
   it('denies a member upload', async () => {
     await assertFails(uploadBytes(img(as('mem1'), 'm.png'), new Uint8Array(1024), png));
   });
-  it('denies every read through the rules', async () => {
+  it('lets only an admin read, which getDownloadURL needs', async () => {
+    await assertSucceeds(getBytes(img(as('adm1'))));
+    await assertSucceeds(getMetadata(img(as('adm1'))));
     await assertFails(getBytes(img(as('mem1'))));
-    await assertFails(getBytes(img(as('adm1'))));
+    await assertFails(getMetadata(img(as('mem1'))));
+    await assertFails(getBytes(img(testEnv.unauthenticatedContext().storage())));
   });
   it('lets only an admin delete', async () => {
-    await assertFails(deleteObject(img(as('mem1'))));
-    await assertSucceeds(deleteObject(img(as('adm1'))));
+    await assertFails(deleteObject(img(as('mem1'), 'del.png')));
+    await assertSucceeds(deleteObject(img(as('adm1'), 'del.png')));
   });
 });
