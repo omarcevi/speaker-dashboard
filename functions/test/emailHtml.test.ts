@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanEmailHtml, isBlankHtml, renderHtmlEmail, templateHtml } from '../src/shared/emailHtml.js'
+import { cleanEmailHtml, cleanSignatureHtml, isBlankHtml, renderHtmlEmail, templateHtml } from '../src/shared/emailHtml.js'
 import { fillInsIn, renderEmail } from '../src/email/fillIns.js'
 
 describe('emailHtml', () => {
@@ -91,5 +91,57 @@ describe('emailHtml', () => {
     expect(cleanEmailHtml('<a href="mailto:a@b.test">m</a>')).toContain('href="mailto:a@b.test"')
     expect(cleanEmailHtml('<img src="mailto:a@b.test" alt="x">')).toBe('')
     expect(cleanEmailHtml('<style>p{color:red}</style>q')).toBe('q')
+  })
+})
+
+describe('cleanSignatureHtml', () => {
+  // A two-column Gmail-style signature: logo, a divider, then title, subtitle and link.
+  const TWO_COLUMN = '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tbody><tr>'
+    + '<td valign="top" width="72" style="padding-right:12px;"><img src="https://x.test/logo.png" alt="GDG" width="64" height="64"></td>'
+    + '<td valign="top" style="border-left:2px solid #dadce0; padding-left:12px;">'
+    + '<div><b style="font-size:14px; color:#202124;">DevFest Team</b></div>'
+    + '<div><span style="color:#5f6368; font-family:Arial, sans-serif;">GDG Cloud</span></div>'
+    + '<div><a href="https://devfest.test" style="color:#8ab4f8; text-decoration:none;">devfest.test</a></div>'
+    + '</td></tr></tbody></table>'
+
+  it('keepsTwoColumnLayout', () => {
+    const withLinkAttrs = TWO_COLUMN.replace('href="https://devfest.test" style="color:#8ab4f8; text-decoration:none;"',
+      'href="https://devfest.test" style="color:#8ab4f8; text-decoration:none;" target="_blank" rel="noopener noreferrer"')
+    expect(cleanSignatureHtml(TWO_COLUMN)).toBe(withLinkAttrs)
+  })
+
+  it('dropsUnsafeDeclarationsKeepsAllowed', () => {
+    const out = cleanSignatureHtml('<span style="color:#5f6368; background:url(https://e.test/x); background-color:url(https://e.test/y); '
+      + 'width:expression(alert(1)); font-size:12px; position:fixed; behavior:url(x.htc); color:javascript:alert(1); '
+      + 'margin:0 &#92;9; padding:@import x; display:flex">x</span><div style="display:inline-block">y</div>')
+    expect(out).toBe('<span style="color:#5f6368; font-size:12px;">x</span><div style="display:inline-block;">y</div>')
+  })
+
+  it('removesScriptsAndHandlersInTables', () => {
+    const out = cleanSignatureHtml('<table onclick="x()"><tr><td onmouseover="y()" style="color:red">a<script>alert(1)</script></td></tr></table>')
+    expect(out).toBe('<table><tr><td style="color:red;">a</td></tr></table>')
+  })
+
+  it('keepsBodyRules', () => {
+    expect(cleanSignatureHtml('<img alt="x">')).toBe('')
+    expect(cleanSignatureHtml('<a href="javascript:alert(1)" style="color:red">x</a>')).toBe('<a style="color:red;">x</a>')
+  })
+
+  it('bodiesStillLoseTablesAndStyles', () => {
+    expect(cleanEmailHtml('<table><tr><td style="color:red">a</td></tr></table><p style="color:red">b</p>')).toBe('a<p>b</p>')
+  })
+
+  it('tableSignatureFillsAndEscapes', () => {
+    const sig = '<table><tr><td style="color:#5f6368;">See you at {{venue}}</td></tr></table>'
+    const r = renderHtmlEmail({ subject: 's', html: '<p style="color:red">Hi</p>' }, { venue: 'Hall <A> & "B"' }, sig)
+    expect(r).toMatchObject({ ok: true,
+      html: '<p>Hi</p><br><table><tr><td style="color:#5f6368;">See you at Hall &lt;A&gt; &amp; &quot;B&quot;</td></tr></table>' })
+    expect(renderHtmlEmail({ subject: 's', html: '<p>Hi</p>' }, {}, sig)).toEqual({ ok: false, missing: ['venue'], empty: [] })
+  })
+
+  it('blankTableSignature', () => {
+    expect(isBlankHtml('<table><tr><td style="padding:4px"> </td></tr></table>')).toBe(true)
+    expect(isBlankHtml(TWO_COLUMN)).toBe(false)
+    expect(isBlankHtml('<table><tr><td><img src="https://x.test/l.png"></td></tr></table>')).toBe(false)
   })
 })
