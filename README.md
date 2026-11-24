@@ -150,9 +150,10 @@ The owner does these steps once:
    MAIL_SENDER=<the From address: the same user, or a group it can send as>
    ```
    Every email the dashboard sends gets the Gmail label **Speaker Dashboard** in `MAIL_USER`'s mailbox, created on the first send. Search `label:speaker-dashboard` to see those conversations, replies included. To use another name, set `MAIL_LABEL`.
-5. **Deploy functions and rules** when ready:
+5. **Deploy** the functions, rules and the web app (the Emails pages are in it) when ready:
    ```bash
-   npx firebase deploy --only functions,firestore:rules,storage --project speaker-dashboard-9c149
+   npm run build --prefix web
+   npx firebase deploy --only functions,firestore:rules,storage,hosting --project speaker-dashboard-9c149
    ```
    This adds the send queue (every minute) and the reply check (every 5 minutes). Within a minute, the send queue creates the **Acceptance** and **Decline** templates with placeholder text, and empty event settings (event name, date, venue). Fill in the event settings and edit the templates before sending.
 
