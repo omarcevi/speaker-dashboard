@@ -235,9 +235,30 @@ describe('loading stages', () => {
 })
 
 describe('manage stages helpers', () => {
-  it('withTemplateKeepsHistory', () => {
-    expect(withTemplate({ ...pres }, 'pres3').templateIds).toEqual(['pres3', 'pres2', 'pres1'])
-    expect(withTemplate(pres, 'pres1').templateIds).toEqual(['pres1', 'pres2'])
+  it('withTemplateKeepsSavedHistory', () => {
+    expect(withTemplate({ ...pres }, 'pres3', [pres]).templateIds).toEqual(['pres3', 'pres2', 'pres1'])
+    expect(withTemplate(pres, 'pres1', [pres]).templateIds).toEqual(['pres1', 'pres2'])
+  })
+  it('withTemplateOnSavedStageAddsOnlySavedTemplates', () => {
+    const saved: Stage = { ...pres, templateIds: ['A'] }
+    expect(withTemplate(saved, 'B', [saved]).templateIds).toEqual(['B', 'A'])
+  })
+  it('withTemplateBackAndForthEndsAsSaved', () => {
+    const saved: Stage = { ...pres, templateIds: ['A', 'old'] }
+    const other: Stage = { ...pres, id: 'other', templateIds: ['B', 'Z'] }
+    const b = withTemplate(saved, 'B', [other, saved])
+    expect(b.templateIds).toEqual(['B', 'A', 'old'])
+    const c = withTemplate(b, 'C', [other, saved])
+    expect(c.templateIds).toEqual(['C', 'A', 'old']) // B was never saved on this stage: no history for it
+    expect(withTemplate(c, 'A', [other, saved])).toEqual(saved)
+  })
+  it('withTemplateOnNewStageKeepsOneTemplate', () => {
+    const live: Stage[] = [{ ...pres, id: 'acc', templateIds: ['acceptance'] }]
+    const fresh = newStage('x', 'acceptance')
+    const picked = withTemplate(fresh, 'event-info', live)
+    expect(picked.templateIds).toEqual(['event-info'])
+    expect(withTemplate(picked, 'visa', live).templateIds).toEqual(['visa'])
+    expect(withTemplate(picked, 'acceptance', live).templateIds).toEqual(['acceptance'])
   })
   it('stagesProblem names the first problem', () => {
     expect(stagesProblem([{ ...pres, name: '  ' }])).toBe('Every stage needs a name')

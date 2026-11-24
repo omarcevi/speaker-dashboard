@@ -68,7 +68,7 @@ export default function ManageStagesPage() {
                 <div className="field"><label htmlFor={`n${s.id}`}>Name</label><input id={`n${s.id}`} className="input" value={s.name} onChange={(e) => edit(i, { name: e.target.value })} /></div>
                 <div className="field">
                   <label htmlFor={`t${s.id}`}>Template it sends</label>
-                  <select id={`t${s.id}`} className="input" value={deleted ? '' : current} onChange={(e) => change(list.map((x, j) => (j === i ? withTemplate(x, e.target.value) : x)))}>
+                  <select id={`t${s.id}`} className="input" value={deleted ? '' : current} onChange={(e) => change(list.map((x, j) => (j === i ? withTemplate(x, e.target.value, stages) : x)))}>
                     {deleted && <option value="" disabled>Choose a template…</option>}
                     {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>

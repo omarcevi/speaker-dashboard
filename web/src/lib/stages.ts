@@ -193,8 +193,13 @@ export function cellTone(c: Cell): '' | 'strong' | 'warn' | 'line' | 'faint' {
 
 export const MAX_STAGES = 30 // the rules' cap
 
-/** `s` sending `templateId`; the templates it used before stay listed so past sends still count. */
-export const withTemplate = (s: Stage, templateId: string): Stage => ({ ...s, templateIds: [templateId, ...s.templateIds.filter((t) => t !== templateId)] })
+/** `s` sending `templateId`. The templates its last saved version (in `saved`, the stages as stored) listed stay
+ *  listed so past sends still count; a template only picked in the editor and never saved adds no history, and a new
+ *  stage (not in `saved`) has none. */
+export function withTemplate(s: Stage, templateId: string, saved: readonly Stage[]): Stage {
+  const history = saved.find((x) => x.id === s.id)?.templateIds ?? []
+  return { ...s, templateIds: [templateId, ...history.filter((t) => t !== templateId)] }
+}
 
 export const newStage = (id: string, templateId: string): Stage => ({ id, name: '', templateIds: [templateId], dueFrom: null, appliesTo: 'everyone' })
 
