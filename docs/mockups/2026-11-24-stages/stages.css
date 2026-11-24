@@ -1,0 +1,40 @@
+/* Stages screens, on top of app.css and ../2026-11-23-email/mail.css. */
+.grid-card table { min-width: 880px; }
+.grid-card th, .grid-card td { vertical-align: middle; }
+.grid-card th.col { min-width: 168px; height: auto; padding: 12px 16px; vertical-align: top; }
+.grid-card th.col .name { color: var(--text); font-size: 14px; font-weight: 500; white-space: normal; }
+.grid-card th.col .sub { margin-top: 2px; font-size: 12px; color: var(--muted); white-space: normal; }
+.grid-card th.col .btn { margin-top: 8px; }
+.grid-card th.col .warn-line { margin-top: 6px; white-space: normal; font-size: 12px; }
+.grid-card .who { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 190px; box-shadow: 1px 0 0 var(--rule); }
+.grid-card th.who { z-index: 3; }
+.grid-card tbody tr:hover td { background: var(--raised); }
+.grid-card tbody tr:hover td.who { background: var(--raised); }
+.cellbtn { display: inline-flex; align-items: center; min-height: 32px; padding: 3px 6px; margin: -3px -6px; border: 1px solid transparent; border-radius: var(--r-chip); background: none; cursor: pointer; text-align: left; }
+.cellbtn:hover { border-color: var(--control); background: var(--surface); }
+.cellbtn[aria-pressed="true"], .cellbtn[aria-expanded="true"] { border-color: var(--text); background: var(--surface); }
+.cellbtn.static { cursor: default; }
+.cellbtn.static:hover { border-color: transparent; background: none; }
+.faint { color: var(--faint); font-size: 13px; }
+.mark { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.mark b { font-size: 12px; font-weight: 500; color: var(--text); border: 1px dashed var(--text); border-radius: var(--r-tag); padding: 1px 6px; }
+.pop { position: fixed; z-index: 30; min-width: 230px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-inner); padding: 6px; box-shadow: 0 8px 24px -8px rgba(32, 33, 36, 0.35); } /* taste-skill-ignore: small popover over the grid */
+.pop .pop-h { padding: 6px 10px 8px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.pop button { display: block; width: 100%; text-align: left; height: 36px; padding: 0 10px; border: 0; border-radius: var(--r-chip); background: none; cursor: pointer; color: var(--text); }
+.pop button:hover { background: var(--raised); }
+.note { margin-top: 16px; padding: 10px 14px; border-radius: var(--r-inner); background: var(--surface); border: 1px solid var(--control); display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+
+/* Manage stages */
+.stage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.stage { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 16px; }
+.stage .ord { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.stage .ord b { font-size: 12px; color: var(--muted); font-weight: 500; }
+.stage .fields { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px 16px; align-items: start; }
+.stage .field + .field { margin-top: 0; }
+.stage .foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+select.input { padding-right: 8px; }
+.icon-btn[disabled] { opacity: .35; cursor: default; }
+.savebar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+@media (max-width: 960px) { .stage .fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 720px) { .stage { grid-template-columns: minmax(0, 1fr); } .stage .ord { flex-direction: row; } .stage .fields { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .subnav { overflow-x: auto; } .subnav a { white-space: nowrap; } }

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stages · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="../2026-11-23-email/mail.css">
+<link rel="stylesheet" href="stages.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="../2026-11-23-email/mail.js"></script>
+<script src="stages.js"></script>
+<script>
+const { esc, plural, bySpeaker, speakerName, stages, grid, chip, count, missingIn, hasMissing, hasFollow, SENT, fmt, stagesShell } = STAGES;
+const admin = new URLSearchParams(location.search).get('member') !== '1';
+let filter = 'all', picked = null, pop = null, note = '';
+
+const FILTERS = [['all', 'All', () => true], ['missing', 'Missing', hasMissing], ['follow', 'Needs follow-up', hasFollow]];
+const weight = (r) => (hasFollow(r) ? 2 : 0) + (hasMissing(r) ? 1 : 0);
+
+function head(s) {
+  const sent = count(s, (k) => SENT.includes(k)), miss = missingIn(s);
+  const bits = [];
+  if (sent) bits.push(`${sent} sent`);
+  if (miss) bits.push(`${miss} missing`);
+  if (!bits.length) bits.push(s.dueFrom ? `due ${fmt(s.dueFrom)}` : 'no due date');
+  else if (s.dueFrom && s.dueFrom > STAGES.TODAY) bits.push(`due ${fmt(s.dueFrom)}`);
+  return `<th class="col" scope="col"><div class="name">${esc(s.name)}</div><div class="sub">${esc(bits.join(' · '))}${s.appliesTo === 'added' ? '<br>Only speakers added' : ''}</div>
+    ${!s.templateId ? '<div class="warn-line">Template deleted</div>' : ''}
+    ${admin && miss && s.templateId ? `<button class="btn sm" data-sendall="${s.id}">Send to the ${miss} missing</button>` : ''}</th>`;
+}
+
+function td(r, s) {
+  const c = r.cells[s.id], id = `${r.key}|${s.id}`;
+  const kind = c.k === 'missing' ? 'missing' : SENT.includes(c.k) || ['bounced', 'problem', 'scheduled'].includes(c.k) ? 'sent' : 'plain';
+  if (kind === 'plain') return `<td>${chip(c)}</td>`;
+  const pressed = picked === id;
+  if (kind === 'missing' && !admin) return `<td><span class="cellbtn static">${chip(c)}</span></td>`;
+  return `<td><button class="cellbtn" data-cell="${id}" data-kind="${kind}" ${kind === 'missing' ? `aria-haspopup="menu" aria-expanded="${pop === id}"` : `aria-pressed="${pressed}"`}>${chip(c)}</button></td>`;
+}
+
+function draw() {
+  const f = FILTERS.find((x) => x[0] === filter);
+  const rows = grid.filter(f[2]).sort((a, b) => weight(b) - weight(a));
+  const nMiss = grid.filter(hasMissing).length, nFollow = grid.filter(hasFollow).length;
+  stagesShell(`
+    <div class="title-row">
+      <div><h1>Stages</h1><p class="lede">The emails each approved speaker should get, and who is missing one. Today is 2 Dec 2026.</p></div>
+      ${admin ? '<div class="actions"><a class="btn" href="manage.html">Manage stages</a></div>' : ''}
+    </div>
+    <div class="filterbar" role="group" aria-label="Show">${FILTERS.map(([k, l, fn]) => `<button aria-pressed="${k === filter}" data-f="${k}">${l} <span class="n num">${grid.filter(fn).length}</span></button>`).join('')}</div>
+    ${note ? `<div class="note" role="status"><span>${esc(note)}</span><button class="btn sm text" data-note>Dismiss</button></div>` : ''}
+    <div class="card table-card scroll-x grid-card">
+      ${rows.length ? `<table>
+        <thead><tr><th class="who" scope="col">Speaker</th>${stages.map(head).join('')}</tr></thead>
+        <tbody>${rows.map((r) => { const g = bySpeaker(r.key);
+          return `<tr><th class="who" scope="row" style="height:auto;padding:11px 16px;font-size:inherit;color:inherit;font-weight:inherit;border-bottom:1px solid var(--rule);vertical-align:middle"><div class="cell-main"><a href="../2026-11-17-ui-refresh/talk.html?s=${r.key}">${esc(speakerName(g.sp))}</a></div>
+            <div class="cell-sub">${esc(g.sp.company)}</div>${r.noApproved ? '<div class="mark"><b>No approved talk now</b></div>' : ''}</th>${stages.map((s) => td(r, s)).join('')}</tr>`; }).join('')}</tbody></table>
+        <div class="table-foot"><span>Click a sent cell to read the conversation. Click a Missing cell to act on it.</span><span>${plural(rows.length, 'speaker')}</span></div>`
+      : `<div class="empty"><b>${filter === 'missing' ? 'Nobody is missing an email' : 'Nobody needs a follow-up'}</b>Bounces and replies waiting for an answer show up here.</div>`}
+    </div>
+    <p class="hint" style="margin-top:12px">${nMiss} speakers missing an email · ${nFollow} need a follow-up. Speakers shown: everyone with an approved talk, plus anyone who got an acceptance and has no approved talk now.</p>
+    ${pop ? popover() : ''}`, 'stages');
+  if (pop) placePop();
+}
+
+function popover() {
+  const [k, sid] = pop.split('|'), s = stages.find((x) => x.id === sid), sp = bySpeaker(k).sp;
+  return `<div class="pop" role="menu" id="pop"><div class="pop-h">${esc(sp.first)} · ${esc(s.name)}</div>
+    <button role="menuitem" data-act="Opens the send flow for ${esc(s.name)} with ${esc(sp.first)} ticked." ${s.templateId ? '' : 'disabled title="Template deleted"'}>Send ${esc(s.name)}</button>
+    <button role="menuitem" data-act="Marked as already sent. The cell will read “Marked sent 2 Dec”.">Mark as already sent</button>
+    <button role="menuitem" data-act="Skipped for ${esc(sp.first)}. The cell will read “Skipped”.">Skip for this speaker</button></div>`;
+}
+function placePop() {
+  const b = document.querySelector(`[data-cell="${pop}"]`), p = document.getElementById('pop');
+  const r = b.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+  p.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  p.style.top = (r.bottom + h + 12 > innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+}
+
+document.addEventListener('click', (e) => {
+  const fb = e.target.closest('[data-f]'); if (fb) { filter = fb.dataset.f; pop = null; return draw(); }
+  const act = e.target.closest('[data-act]'); if (act) { note = act.dataset.act + ' (Mockup: nothing is saved.)'; pop = null; return draw(); }
+  if (e.target.closest('[data-note]')) { note = ''; return draw(); }
+  const all = e.target.closest('[data-sendall]');
+  if (all) { const s = stages.find((x) => x.id === all.dataset.sendall); note = `Opens the send flow for ${s.name} with the ${missingIn(s)} missing speakers already ticked.`; pop = null; return draw(); }
+  const c = e.target.closest('[data-cell]');
+  if (c) {
+    if (c.dataset.kind === 'missing') { pop = pop === c.dataset.cell ? null : c.dataset.cell; picked = null; }
+    else { picked = picked === c.dataset.cell ? null : c.dataset.cell; pop = null; }
+    return draw();
+  }
+  if (pop && !e.target.closest('#pop')) { pop = null; draw(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pop) { pop = null; draw(); } });
+addEventListener('resize', () => pop && placePop());
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manage stages · DevFest Istanbul Speakers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../2026-11-17-ui-refresh/app.css">
+<link rel="stylesheet" href="../2026-11-23-email/mail.css">
+<link rel="stylesheet" href="stages.css">
+</head>
+<body>
+<script src="../2026-11-17-ui-refresh/data.js"></script>
+<script src="../2026-11-17-ui-refresh/ui.js"></script>
+<script src="../2026-11-23-email/mail.js"></script>
+<script src="stages.js"></script>
+<script>
+const { esc, plural, templates, stages: seed, stagesShell } = STAGES;
+let list = seed.map((s) => ({ ...s })), saved = false, n = 0;
+
+function stageCard(s, i) {
+  const opts = templates.map((t) => `<option value="${t.id}"${t.id === s.templateId ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  return `<li class="card stage" data-i="${i}">
+    <div class="ord"><button class="icon-btn" data-up="${i}" aria-label="Move ${esc(s.name || 'stage')} up"${i === 0 ? ' disabled' : ''}>↑</button><b>${i + 1}</b><button class="icon-btn" data-down="${i}" aria-label="Move ${esc(s.name || 'stage')} down"${i === list.length - 1 ? ' disabled' : ''}>↓</button></div>
+    <div class="fields">
+      <div class="field"><label for="n${i}">Name</label><input id="n${i}" class="input" data-k="name" value="${esc(s.name)}"></div>
+      <div class="field"><label for="t${i}">Template it sends</label><select id="t${i}" class="input" data-k="templateId">${s.templateId ? '' : '<option value="" selected disabled>Choose a template…</option>'}${opts}</select>
+        ${s.templateId ? '' : '<span class="warn-line">Template deleted. This stage can’t send until you pick another; past sends still count.</span>'}</div>
+      <div class="field"><label for="d${i}">Due from</label><input id="d${i}" class="input" type="date" data-k="dueFrom" value="${s.dueFrom || ''}"><span class="hint">Empty: never flagged as missing</span></div>
+      <div class="field"><label for="a${i}">Applies to</label><select id="a${i}" class="input" data-k="appliesTo"><option value="everyone"${s.appliesTo === 'everyone' ? ' selected' : ''}>Everyone</option><option value="added"${s.appliesTo === 'added' ? ' selected' : ''}>Only speakers I add</option></select></div>
+    </div>
+    <div class="foot"><span class="hint">Changing the template keeps emails already sent counted for this stage.</span><button class="btn sm text" data-rm="${i}">Remove stage</button></div>
+  </li>`;
+}
+
+function draw() {
+  stagesShell(`
+    <div class="title-row">
+      <div><h1>Manage stages</h1><p class="lede"><a href="stages.html">Stages</a> · the series of emails each approved speaker should get, in order</p></div>
+      <div class="actions"><a class="btn" href="stages.html">Back to Stages</a></div>
+    </div>
+    <ol class="stage-list" style="margin-top:20px">${list.map(stageCard).join('')}</ol>
+    <div class="savebar">${saved ? '<span class="hint" role="status">Saved (mockup: nothing is stored)</span>' : ''}<button class="btn" data-add>Add stage</button><button class="btn primary" data-save>Save</button></div>`, 'stages');
+}
+const sync = (el) => { const i = +el.closest('[data-i]').dataset.i; list[i][el.dataset.k] = el.value || (el.dataset.k === 'dueFrom' ? null : ''); saved = false; };
+document.addEventListener('change', (e) => { if (e.target.dataset.k) { sync(e.target); draw(); } });
+document.addEventListener('input', (e) => { if (e.target.dataset.k === 'name') sync(e.target); });
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset, swap = (i, j) => { [list[i], list[j]] = [list[j], list[i]]; saved = false; draw(); };
+  if (d.up) return swap(+d.up, +d.up - 1);
+  if (d.down) return swap(+d.down, +d.down + 1);
+  if (d.rm) { list.splice(+d.rm, 1); saved = false; return draw(); }
+  if (d.add !== undefined) { list.push({ id: 'new' + ++n, name: '', templateId: templates[0].id, dueFrom: null, appliesTo: 'everyone' }); saved = false; return draw(); }
+  if (d.save !== undefined) { saved = true; draw(); }
+});
+draw();
+</script>
+</body>
+</html>
