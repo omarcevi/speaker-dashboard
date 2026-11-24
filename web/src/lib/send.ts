@@ -65,9 +65,17 @@ export function visibleSelection(rows: RecipientRow[], unticked: ReadonlySet<str
   return { selected, hidden: ticked.length - selected.length }
 }
 
-/** The starting unticked set: with a chosen speaker (from their Email menu), everyone else; otherwise nobody. */
-export function untickedExcept(speakerKeys: string[], only: string | null): Set<string> {
-  return only === null ? new Set() : new Set(speakerKeys.filter((k) => k !== only))
+/** The starting unticked set: with chosen speakers (a speaker's Email menu, or the Stages grid), everyone else; otherwise nobody. */
+export function untickedExcept(speakerKeys: string[], only: string[] | null): Set<string> {
+  if (!only || only.length === 0) return new Set()
+  const keep = new Set(only)
+  return new Set(speakerKeys.filter((k) => !keep.has(k)))
+}
+
+/** The chosen speakers who can't get the template now (not on the Ready tab), with their reason. */
+export function pickedNotReady(rows: RecipientRow[], picked: string[]): RecipientRow[] {
+  const want = new Set(picked)
+  return rows.filter((r) => want.has(r.g.speakerKey) && r.tab !== 'ready')
 }
 
 /** "Ada Lovelace, Grace Hopper" — at most `max` names, then "+N more". */

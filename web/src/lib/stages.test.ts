@@ -3,7 +3,7 @@ import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
 import {
-  cellLabel, cellTone, dueLabel, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, stagesProblem, withTemplate,
+  cellLabel, cellTone, dueLabel, markNote, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, sendLink, stagesProblem, withTemplate,
   type Cell, type Exceptions, type StageRow,
 } from './stages.ts'
 import { fakeSub } from './testing.ts'
@@ -247,5 +247,18 @@ describe('manage stages helpers', () => {
   })
   it('newStage starts blank on one template', () => {
     expect(newStage('x', 't1')).toEqual({ id: 'x', name: '', templateIds: ['t1'], dueFrom: null, appliesTo: 'everyone' })
+  })
+})
+
+describe('cell actions', () => {
+  it('sendLink puts every speaker in the query', () => {
+    expect(sendLink('t 1', ['a+b@example.com', 'c@example.com'])).toBe('/emails/templates/t%201/send?speaker=a%2Bb%40example.com&speaker=c%40example.com')
+  })
+  it('markNote says what was marked', () => {
+    expect(markNote(1, 'Ada', 'Event info', null)).toBe('Marked Event info as already sent for Ada.')
+  })
+  it('markNoteRefused', () => {
+    expect(markNote(0, 'Ada', 'Event info', 'Not an approved speaker')).toBe('Not marked: Not an approved speaker')
+    expect(markNote(0, 'Ada', 'Event info', null)).toBe('Not marked: Ada already has this email on its way')
   })
 })

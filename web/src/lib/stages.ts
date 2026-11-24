@@ -206,3 +206,15 @@ export function stagesProblem(stages: Stage[]): string | null {
   }
   return stages.length > MAX_STAGES ? `At most ${MAX_STAGES} stages` : null
 }
+
+/** The send flow for `templateId` with these speakers ticked. */
+export function sendLink(templateId: string, speakerKeys: string[]): string {
+  const q = new URLSearchParams(speakerKeys.map((k) => ['speaker', k]))
+  return `/emails/templates/${encodeURIComponent(templateId)}/send?${q.toString()}`
+}
+
+/** What "Mark as already sent" did: the server creates nothing (`created` 0) for a speaker the template refuses. */
+export function markNote(created: number, first: string, stageName: string, refusal: string | null): string {
+  if (created > 0) return `Marked ${stageName} as already sent for ${first}.`
+  return `Not marked: ${refusal ?? `${first} already has this email on its way`}`
+}

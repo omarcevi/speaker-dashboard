@@ -594,6 +594,7 @@ html.projector .emails-card { display: none; }
 .grid-card th.col .name { color: var(--text); font-size: 14px; font-weight: 500; white-space: normal; }
 .grid-card th.col .sub { margin-top: 2px; font-size: 12px; color: var(--muted); white-space: normal; }
 .grid-card th.col .warn-line { margin-top: 6px; white-space: normal; font-size: 12px; }
+.grid-card th.col .btn { margin-top: 8px; }
 .grid-card .who { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 190px; box-shadow: 1px 0 0 var(--rule); }
 .grid-card th.who { z-index: 3; }
 .grid-card th[scope="row"].who { height: auto; padding: 11px 16px; font-size: inherit; color: inherit; font-weight: inherit; border-bottom: 1px solid var(--rule); }
@@ -607,6 +608,11 @@ html.projector .emails-card { display: none; }
 .grid-card .mark { display: block; padding: 0; margin-top: 3px; font-size: 12px; color: var(--muted); }
 .grid-card .mark b { display: inline-block; font-size: 12px; font-weight: 500; line-height: normal; color: var(--text); border: 1px dashed var(--text); border-radius: var(--r-tag); padding: 1px 6px; }
 .note { margin-top: 16px; padding: 10px 14px; border-radius: var(--r-inner); background: var(--surface); border: 1px solid var(--control); display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+.pop { position: fixed; z-index: 30; min-width: 230px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-inner); padding: 6px; box-shadow: 0 8px 24px -8px rgba(32, 33, 36, 0.35); } /* taste-skill-ignore: small popover over the grid */
+.pop .pop-h { padding: 6px 10px 8px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.pop button { display: block; width: 100%; text-align: left; height: 36px; padding: 0 10px; border: 0; border-radius: var(--r-chip); background: none; cursor: pointer; color: var(--text); font: inherit; }
+.pop button:hover:not(:disabled) { background: var(--raised); }
+.pop button:disabled { color: var(--faint); cursor: default; }
 @media (max-width: 720px) { .subnav { overflow-x: auto; } .subnav a { white-space: nowrap; } }
 
 /* Manage stages */

@@ -16,7 +16,7 @@ import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { editorFillIns, formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
 import {
-  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, untickedExcept, visibleSelection,
+  blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, pickedNotReady, plural, prepare, recipientRows, speakerName, untickedExcept, visibleSelection,
   type DecisionFilter, type Judge, type Prepared, type RecipientRow, type Tab,
 } from '../lib/send.ts'
 
@@ -106,7 +106,7 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
   return { button, error, reset }
 }
 
-function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string | null }) {
+function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string[] }) {
   const { emails, event, signatureHtml } = useData()
   const sp = useSpeakers()
   const fields = useMemo(() => event?.fields ?? [], [event])
@@ -122,7 +122,8 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   const [tab, setTab] = useState<Tab>('ready')
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all')
   const [hideAlready, setHideAlready] = useState(false)
-  // Picked from a speaker's Email menu (?speaker= on a batch): only that speaker starts ticked; the rest stay listed.
+  // Picked from a speaker's Email menu or the Stages grid (?speaker= on a batch, once or more): only they start
+  // ticked; the rest stay listed.
   const [unticked, setUnticked] = useState<Set<string>>(() =>
     untickedExcept(sp.groups.map((g) => g.speakerKey), mode === 'batch' ? only : null))
   const [picked, setPicked] = useState<string[]>(speakerKey ? [speakerKey] : [])
@@ -157,6 +158,8 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   // Only ticked rows the filters show are sent or marked; ticked rows a filter hides are counted, not acted on.
   const { selected, hidden } = visibleSelection(rows, unticked, rowFilter)
   const shown = (t: Tab) => rows.filter((r) => r.tab === t && passes(r, rowFilter))
+  // Picked speakers who can't get it are named, not silently dropped.
+  const notReady = pickedNotReady(rows, only)
   const firstSend = decisionTmpl && !emails.some((e) => e.templateId === templateId && e.state === 'sent' && !e.manual)
 
   // Step 2 on: the recipients picked, as their emails would be written now.
@@ -267,6 +270,11 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
               </button>
             )}
           </div>
+        )}
+        {notReady.length > 0 && (
+          <p className="warn-line" style={{ marginTop: 16 }}>
+            <span>Not ready for this template: {nameList(notReady.map((r) => `${speakerName(r.g)} (${r.reason})`))}</span>
+          </p>
         )}
         <div className="filterbar" role="group" aria-label="Decision" style={{ marginTop: 16 }}>
           {DECISIONS.map(([k, label]) => (
@@ -601,5 +609,5 @@ export default function SendPage() {
   }
   const mode: Mode = custom ? 'custom' : followUp ? 'followUp' : 'batch'
   // A new visit (link followed) starts a new flow with a new batch id.
-  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={speaker} />
+  return <Flow key={key} mode={mode} template={template} speakerKey={custom || followUp ? speaker : null} only={params.getAll('speaker')} />
 }
