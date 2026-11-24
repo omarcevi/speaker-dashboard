@@ -3,7 +3,7 @@ import type { Stage } from '../../../functions/src/model.ts'
 import type { CellKind } from '../lib/stages.ts'
 
 interface Props {
-  /** The cell button the menu opened from: placed under it, and focus goes back to it on Escape. */
+  /** The cell button the menu opened from: placed under it, and focus goes back to it on Escape, Tab or an action. */
   anchor: HTMLElement
   first: string
   stage: Stage
@@ -65,8 +65,7 @@ export default function StageMenu({ anchor, first, stage, kind, hasTemplate, onS
   }, [anchor, onClose])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); anchor.focus(); return }
-    if (e.key === 'Tab') { onClose(); return }
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); onClose(); anchor.focus(); return }
     const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
     if (buttons.length === 0) return
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement)

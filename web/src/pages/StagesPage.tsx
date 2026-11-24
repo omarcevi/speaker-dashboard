@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { Stage } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
@@ -38,6 +38,20 @@ export default function StagesPage() {
   const [menu, setMenu] = useState<Menu | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
+  // The cell a menu action came from. If the action turns it static (a mark with no conversation, say), the button
+  // goes away; focus then moves to the row's speaker link (or the next control) instead of being lost.
+  const back = useRef<{ id: string; anchor: HTMLElement } | null>(null)
+  useLayoutEffect(() => {
+    const b = back.current
+    if (!b || b.anchor.isConnected) return
+    back.current = null
+    if (document.activeElement && document.activeElement !== document.body) return
+    const td = document.querySelector<HTMLElement>(`td[data-cell="${CSS.escape(b.id)}"]`)
+    const target = td?.querySelector<HTMLElement>('button')
+      ?? td?.closest('tr')?.querySelector<HTMLElement>('th a, button')
+      ?? document.querySelector<HTMLElement>('.filterbar [aria-pressed="true"]')
+    target?.focus()
+  })
 
   const counts = Object.fromEntries(FILTERS.map(([k, , fn]) => [k, rows.filter(fn).length])) as Record<Filter, number>
   const test = FILTERS.find((f) => f[0] === filter)![2]
@@ -98,12 +112,15 @@ export default function StagesPage() {
               </button>
             ))}
           </div>
-          {note && (
-            <div className="note" role="status">
-              <span>{note}</span>
-              <button type="button" className="btn sm text" onClick={() => setNote(null)}>Dismiss</button>
-            </div>
-          )}
+          {/* Always mounted, so a new note is announced. */}
+          <div role="status">
+            {note && (
+              <div className="note">
+                <span>{note}</span>
+                <button type="button" className="btn sm text" onClick={() => setNote(null)}>Dismiss</button>
+              </div>
+            )}
+          </div>
           <div className="card table-card scroll-x grid-card">
             {shown.length === 0 ? (
               <div className="empty">
@@ -154,7 +171,7 @@ export default function StagesPage() {
                             const threadId = cell.email?.threadId ?? null
                             const menuOn = menu?.key === key && menu.stageId === s.id
                             return (
-                              <td key={s.id}>
+                              <td key={s.id} data-cell={id}>
                                 <StageCell cell={cell} admin={admin} expanded={pressed === id || menuOn}
                                   onOpen={threadId ? () => { setPressed(id); setOpen(threadId) } : talk ? () => navigate(`/talk/${talk}`) : null}
                                   onMenu={(anchor) => setMenu(menuOn ? null : { key, stageId: s.id, anchor })} />
@@ -182,8 +199,11 @@ export default function StagesPage() {
         <StageMenu anchor={menu.anchor} first={menuRow.g.name.first || menuRow.g.email} stage={menuStage}
           kind={menuRow.cells[menuStage.id].kind} hasTemplate={!!templateOf(menuStage)} onClose={closeMenu}
           onSend={() => navigate(sendLink(menuStage.templateIds[0], [menuRow.g.speakerKey]))}
-          onMark={() => void mark(menuRow, menuStage)}
-          onException={(which, on) => void exception(menuRow.g.speakerKey, menuStage, which, on)} />
+          onMark={() => { back.current = { id: `${menuRow.g.speakerKey}|${menuStage.id}`, anchor: menu.anchor }; void mark(menuRow, menuStage) }}
+          onException={(which, on) => {
+            back.current = { id: `${menuRow.g.speakerKey}|${menuStage.id}`, anchor: menu.anchor }
+            void exception(menuRow.g.speakerKey, menuStage, which, on)
+          }} />
       )}
       {open && <Conversation threadId={open} onClose={() => { setOpen(null); setPressed(null) }} />}
     </>

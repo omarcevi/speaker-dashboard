@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Status } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
-import { blockedReason, canSend, istanbulDate, nameList, pickedNotReady, prepare, recipientRows, untickedExcept, visibleSelection, type Judge } from './send.ts'
+import {
+  blockedReason, canSend, istanbulDate, nameList, pickedNotReady, prepare, recipientRows, startTicks, visibleSelection, withTick, type Judge, type Ticks,
+} from './send.ts'
 import { fakeSub } from './testing.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
@@ -77,44 +79,67 @@ describe('recipientRows', () => {
   })
 })
 
+const allBut = (...keys: string[]): Ticks => ({ all: true, except: new Set(keys) })
+const all = { decision: 'all', hideAlready: false } as const
+
 describe('visibleSelection', () => {
   const rows = recipientRows('acceptance', 'acc', groups, judge())
   it('takes ticked ready rows the filters show', () => {
-    expect(visibleSelection(rows, new Set(), { decision: 'all', hideAlready: false })).toEqual({ selected: ['ada@example.com', 'dee@example.com'], hidden: 0 })
-    expect(visibleSelection(rows, new Set(['dee@example.com']), { decision: 'all', hideAlready: false })).toEqual({ selected: ['ada@example.com'], hidden: 0 })
+    expect(visibleSelection(rows, allBut(), all)).toEqual({ selected: ['ada@example.com', 'dee@example.com'], hidden: 0 })
+    expect(visibleSelection(rows, allBut('dee@example.com'), all)).toEqual({ selected: ['ada@example.com'], hidden: 0 })
   })
   it('counts ticked rows a filter hides and leaves them out', () => {
-    expect(visibleSelection(rows, new Set(), { decision: 'declined', hideAlready: false })).toEqual({ selected: [], hidden: 2 })
-    expect(visibleSelection(rows, new Set(['ada@example.com']), { decision: 'not-ready', hideAlready: true })).toEqual({ selected: [], hidden: 1 })
+    expect(visibleSelection(rows, allBut(), { decision: 'declined', hideAlready: false })).toEqual({ selected: [], hidden: 2 })
+    expect(visibleSelection(rows, allBut('ada@example.com'), { decision: 'not-ready', hideAlready: true })).toEqual({ selected: [], hidden: 1 })
   })
 })
 
-describe('untickedExcept', () => {
-  const keys = groups.map((g) => g.speakerKey)
-  it('starts a batch with only the chosen speaker ticked, everyone else listed but unticked', () => {
+describe('startTicks', () => {
+  it('starts a batch with only the chosen speaker ticked', () => {
     const rows = recipientRows('acceptance', 'acc', groups, judge())
-    const unticked = untickedExcept(keys, ['dee@example.com'])
-    expect(unticked.has('dee@example.com')).toBe(false)
-    expect(unticked.has('ada@example.com')).toBe(true)
-    expect(visibleSelection(rows, unticked, { decision: 'all', hideAlready: false })).toEqual({ selected: ['dee@example.com'], hidden: 0 })
+    expect(visibleSelection(rows, startTicks(['dee@example.com']), all)).toEqual({ selected: ['dee@example.com'], hidden: 0 })
   })
   it('ticksSeveral', () => {
     const rows = recipientRows('acceptance', 'acc', groups, judge())
-    const unticked = untickedExcept(keys, ['dee@example.com', 'ada@example.com'])
-    expect([...unticked].sort()).toEqual(['bo@example.com', 'cem@example.com'])
-    expect(visibleSelection(rows, unticked, { decision: 'all', hideAlready: false })).toEqual({ selected: ['ada@example.com', 'dee@example.com'], hidden: 0 })
+    expect(visibleSelection(rows, startTicks(['dee@example.com', 'ada@example.com']), all)).toEqual({ selected: ['ada@example.com', 'dee@example.com'], hidden: 0 })
   })
   it('ticks everyone when no speaker was chosen', () => {
-    expect(untickedExcept(keys, null).size).toBe(0)
-    expect(untickedExcept(keys, []).size).toBe(0)
+    const rows = recipientRows('acceptance', 'acc', groups, judge())
+    for (const only of [null, []]) expect(visibleSelection(rows, startTicks(only), all).selected).toEqual(['ada@example.com', 'dee@example.com'])
+  })
+  it('targetedIgnoresLaterSpeakers: a speaker who appears after a targeted link opened stays unticked', () => {
+    const ticks = startTicks(['dee@example.com'])
+    const later = speakerGroups(buildCards([...subs, fakeSub({ id: 'e1', row: 6, speakerKey: 'eve@example.com', firstName: 'Eve', email: 'eve@example.com' })], () => false))
+    const j: Judge = { ...judge(), status: (id) => (id === 'e1' ? 'approved' : statuses[id] ?? 'pending'), speakerKeys: new Set(later.map((g) => g.speakerKey)) }
+    const rows = recipientRows('acceptance', 'acc', later, j)
+    expect(rows.find((r) => r.g.speakerKey === 'eve@example.com')?.tab).toBe('ready')
+    expect(visibleSelection(rows, ticks, all).selected).toEqual(['dee@example.com'])
+    // Untargeted, the newcomer starts ticked, as before.
+    expect(visibleSelection(rows, startTicks(null), all).selected).toContain('eve@example.com')
+  })
+  it('ticks and unticks by hand in both modes', () => {
+    const rows = recipientRows('acceptance', 'acc', groups, judge())
+    const t = withTick(withTick(startTicks(['dee@example.com']), 'ada@example.com', true), 'dee@example.com', false)
+    expect(visibleSelection(rows, t, all).selected).toEqual(['ada@example.com'])
+    expect(visibleSelection(rows, withTick(startTicks(null), 'ada@example.com', false), all).selected).toEqual(['dee@example.com'])
   })
 })
 
 describe('pickedNotReady', () => {
   it('pickedNotReadyListsRefused', () => {
     const rows = recipientRows('acceptance', 'acc', groups, judge())
-    const out = pickedNotReady(rows, ['bo@example.com', 'ada@example.com'])
-    expect(out.map((r) => [r.g.speakerKey, r.reason])).toEqual([['bo@example.com', 'No approved talk']])
+    expect(pickedNotReady(rows, ['bo@example.com', 'ada@example.com'])).toEqual([{ key: 'bo@example.com', name: 'Bo Lovelace', reason: 'No approved talk' }])
+  })
+  it('names speakers who already got it or have it on its way', () => {
+    const history = [email({ speakerKey: 'dee@example.com', talkIds: ['d1'], manual: true }), email({ speakerKey: 'ada@example.com', state: 'scheduled' })]
+    const rows = recipientRows('acceptance', 'acc', groups, judge(history))
+    expect(pickedNotReady(rows, ['ada@example.com', 'dee@example.com']).map((r) => [r.key, r.reason])).toEqual([
+      ['ada@example.com', 'Already on its way'], ['dee@example.com', 'Already had a decision email'],
+    ])
+  })
+  it('lists a picked key that is no longer a speaker', () => {
+    const rows = recipientRows('acceptance', 'acc', groups, judge())
+    expect(pickedNotReady(rows, ['gone@example.com'])).toEqual([{ key: 'gone@example.com', name: 'gone@example.com', reason: 'No longer a speaker' }])
   })
   it('is empty when nobody was picked', () => {
     expect(pickedNotReady(recipientRows('acceptance', 'acc', groups, judge()), [])).toEqual([])
