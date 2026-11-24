@@ -9,10 +9,13 @@ const h = vi.hoisted(() => ({
   settleReply: vi.fn(async () => {}),
   unsettleReply: vi.fn(async () => {}),
   draftReply: vi.fn(async () => ({ ok: true as const })),
+  messages: null as unknown[] | null,
 }))
 
 vi.mock('../firebase.ts', () => ({ db: {}, functions: {}, storage: {} }))
 vi.mock('firebase/firestore', () => ({ collection: vi.fn(), onSnapshot: vi.fn(() => () => {}) }))
+// Static rendering runs no effects, so the thread's messages come straight from the listener hook.
+vi.mock('../data/useThreadMessages.ts', () => ({ useThreadMessages: () => ({ messages: h.messages, loadError: null }) }))
 vi.mock('../auth/AuthProvider.tsx', () => ({ useAuth: () => ({ me: h.me }) }))
 vi.mock('../data/DataProvider.tsx', () => ({ useData: () => ({ emails: [], threads: h.threads }) }))
 vi.mock('../data/useSpeakers.ts', () => ({ useSpeakers: () => ({ byKey: new Map() }) }))
@@ -61,7 +64,10 @@ function button(el: ReactNode, label: string): ReactElement<{ onClick: () => voi
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  h.messages = null
+})
 
 describe('Conversation: AI reading line', () => {
   it('shows the reading of the newest reply and No reply needed to an admin', () => {
@@ -76,6 +82,21 @@ describe('Conversation: AI reading line', () => {
     expect(out).toContain('>Undo<')
     expect(out).not.toContain('No reply needed<')
     expect(out).toContain('Marked no reply needed · Omar')
+  })
+
+  it('sits right after the newest reply, once', () => {
+    const msg = (id: string, at: number, text: string, kind = 'reply') => ({
+      id, kind, from: 'Ada <ada@example.com>', to: ['speaker@example.com'], cc: [], at: ts(at), subject: 'Re: Talk',
+      text, quoted: '', attachments: [],
+    })
+    // A later team message (sent from Gmail) proves the line follows m2 rather than the end of the list.
+    h.messages = [msg('m1', 200, 'First question'), msg('m2', 300, 'Newest question'), msg('m3', 400, 'Team answer', 'team')]
+    const out = render(fakeThread())
+    expect(out.split('AI: needs an answer').length - 1).toBe(1)
+    expect(out).toMatch(/Newest question<\/span><\/div><\/article><div class="ai-line">/)
+    expect(out.indexOf('First question')).toBeLessThan(out.indexOf('Newest question'))
+    expect(out.indexOf('Newest question')).toBeLessThan(out.indexOf('class="ai-line"'))
+    expect(out.indexOf('class="ai-line"')).toBeLessThan(out.indexOf('Team answer'))
   })
 
   it('ignores a settle for an older reply', () => {
@@ -135,6 +156,9 @@ describe('Conversation: draft', () => {
     expect(prefill('', null, DRAFT)?.body).toBe(DRAFT.text)
     // Box was typed in: kept.
     expect(prefill('My own words', seen, newer)?.body).toBe('My own words')
+    // Box was typed in, but the admin pressed Redraft: the draft they asked for replaces it.
+    expect(prefill('My own words', seen, newer, true)?.body).toBe('Hi Ada, newer.')
+    expect(prefill('', null, DRAFT, true)?.body).toBe(DRAFT.text)
     // Same draft already seen: nothing to do.
     expect(prefill('', seen, DRAFT)).toBeNull()
     expect(prefill('', null, null)).toBeNull()

@@ -32,11 +32,12 @@ export type Seen = { key: string; text: string }
 export const seenOf = (d: ReplyDraft): Seen => ({ key: `${d.messageId}:${d.at.toMillis()}`, text: d.text })
 
 /** The reply box after a draft arrives: a new draft fills the box only when it is empty or still holds the last
- *  draft, so typed text is never replaced. Null when this draft was already seen. */
-export function prefill(body: string, seen: Seen | null, draft: ReplyDraft | null): { body: string; seen: Seen } | null {
+ *  draft, so typed text is never replaced, unless the admin asked for this draft (Draft a reply / Redraft), in which
+ *  case it replaces the box. Null when this draft was already seen. */
+export function prefill(body: string, seen: Seen | null, draft: ReplyDraft | null, asked = false): { body: string; seen: Seen } | null {
   if (!draft) return null
   const next = seenOf(draft)
   if (seen?.key === next.key) return null
-  const untouched = body.trim() === '' || (seen !== null && body === seen.text)
+  const untouched = asked || body.trim() === '' || (seen !== null && body === seen.text)
   return { body: untouched ? draft.text : body, seen: next }
 }

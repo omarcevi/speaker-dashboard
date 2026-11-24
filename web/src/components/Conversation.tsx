@@ -1,11 +1,10 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
-import type { EmailDoc, ReceivedMessage, ThreadDoc } from '../../../functions/src/model.ts'
+import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { emailAttachment, queueEmails } from '../data/mailActions.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
-import { db } from '../firebase.ts'
+import { useThreadMessages, type ThreadMessage } from '../data/useThreadMessages.ts'
 import { bounceSummary, displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
 import { initials } from '../lib/initials.ts'
 import { canDraft, currentDraft, prefill, seenOf, sendStep, type Seen } from '../lib/replyAssist.ts'
@@ -14,7 +13,7 @@ import { IconDownload } from './Icons.tsx'
 import { AiLine, DraftButton, GapConfirm, SuggestedReply } from './ReplyAssist.tsx'
 
 type Email = EmailDoc & { id: string }
-type Message = ReceivedMessage & { id: string }
+type Message = ThreadMessage
 type Item = { kind: 'ours'; at: number; email: Email } | { kind: 'received'; at: number; msg: Message }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -140,11 +139,14 @@ function ReplyBox({ threadId, speakerKey, firstName, thread }: { threadId: strin
   const draft = currentDraft(thread)
   const [body, setBody] = useState(draft?.text ?? '')
   const [seen, setSeen] = useState<Seen | null>(draft ? seenOf(draft) : null)
-  // A newer draft (Redraft) replaces the box only while it is empty or still holds the last draft.
-  const next = prefill(body, seen, draft)
+  // Set when the admin presses Draft a reply / Redraft; the next new draft then replaces the box even if they typed.
+  const [asked, setAsked] = useState(false)
+  // Otherwise a newer draft replaces the box only while it is empty or still holds the last draft.
+  const next = prefill(body, seen, draft, asked)
   if (next) {
     setBody(next.body)
     setSeen(next.seen)
+    setAsked(false)
   }
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -190,7 +192,8 @@ function ReplyBox({ threadId, speakerKey, firstName, thread }: { threadId: strin
         <span className="actions">
           {canDraft(thread) && (
             <DraftButton threadId={threadId} hasDraft={draft !== null} drafting={drafting || !!thread?.drafting}
-              onBusy={setDrafting} onError={setDraftError} />
+              onBusy={(b) => { setDrafting(b); if (b) setAsked(true) }}
+              onError={(e) => { setDraftError(e); if (e) setAsked(false) }} />
           )}
           <button className="btn primary sm" type="submit" disabled={sending || body.trim() === ''}>{sending ? 'Sending…' : 'Send reply'}</button>
         </span>
@@ -205,29 +208,13 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
   const admin = me?.role === 'admin'
   const { emails, threads } = useData()
   const { byKey } = useSpeakers()
-  const [messages, setMessages] = useState<Message[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const { messages, loadError } = useThreadMessages(threadId)
   const [settling, setSettling] = useState(false)
   const [settleError, setSettleError] = useState<string | null>(null)
   const panel = useRef<HTMLElement>(null)
   const headingId = useId()
   const close = useRef(onClose)
   useEffect(() => { close.current = onClose })
-
-  // One listener on this thread's messages, only while the panel is open.
-  useEffect(() => {
-    return onSnapshot(
-      collection(db, 'threads', threadId, 'messages'),
-      (snap) => {
-        setLoadError(null)
-        setMessages(snap.docs.map((d) => ({ ...(d.data() as ReceivedMessage), id: d.id })))
-      },
-      (e) => {
-        console.error('Messages listener failed', e)
-        setLoadError("Couldn't load the replies in this conversation.")
-      },
-    )
-  }, [threadId])
 
   // Focus moves into the panel and back to whatever opened it; Escape closes.
   useEffect(() => {
