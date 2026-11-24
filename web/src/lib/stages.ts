@@ -214,19 +214,26 @@ export function withTemplate(s: Stage, templateId: string, saved: readonly Stage
   return { ...s, templateIds: [templateId, ...history.filter((t) => t !== templateId)] }
 }
 
+/** `s` without `templateId` among its earlier templates; its current template (the first) is never removed here. */
+export const withoutEarlierTemplate = (s: Stage, templateId: string): Stage =>
+  ({ ...s, templateIds: s.templateIds.filter((t, i) => i === 0 || t !== templateId) })
+
 export const newStage = (id: string, templateId: string): Stage => ({ id, name: '', templateIds: [templateId], dueFrom: null, appliesTo: 'everyone' })
 
 /** Why `stages` can't be saved, or null. A stage whose current template was deleted may still be saved. A template
  *  (current or past) may belong to one stage only, or its sends would tick both. `templates` names them. */
 export function stagesProblem(stages: Stage[], templates: readonly { id: string; name: string }[] = []): string | null {
-  const owner = new Map<string, string>()
+  const owner = new Map<string, { s: Stage; i: number }>()
+  const use = (o: { s: Stage; i: number }) => `${o.s.name}${o.i > 0 ? ' (earlier template)' : ''}`
   for (const s of stages) {
     if (s.name.trim() === '') return 'Every stage needs a name'
     if (s.templateIds.length === 0) return `Pick a template for ${s.name}`
-    for (const t of s.templateIds) {
-      const was = owner.get(t)
-      if (was !== undefined && was !== s.id) return `“${templates.find((x) => x.id === t)?.name ?? t}” is used by two stages`
-      owner.set(t, s.id)
+    s.templateIds.forEach((t, i) => { if (!owner.has(t)) owner.set(t, { s, i }) })
+  }
+  for (const s of stages) {
+    for (const [i, t] of s.templateIds.entries()) {
+      const was = owner.get(t)!
+      if (was.s.id !== s.id) return `“${templates.find((x) => x.id === t)?.name ?? t}” is used by ${use(was)} and ${use({ s, i })}.`
     }
   }
   return stages.length > MAX_STAGES ? `At most ${MAX_STAGES} stages` : null

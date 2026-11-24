@@ -3,7 +3,7 @@ import { speakerGroups } from '../../../functions/src/email/recipients.ts'
 import type { EmailDoc, Stage, Status, ThreadDoc } from '../../../functions/src/model.ts'
 import { buildCards } from '../../../functions/src/shared/cards.ts'
 import {
-  cellLabel, cellTone, changedExceptions, dueLabel, markNote, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, sendLink, stagesProblem, withTemplate,
+  cellLabel, cellTone, changedExceptions, dueLabel, markNote, newStage, readExceptions, readStages, toggled, rowFollow, rowMissing, sortRows, stageCell, stageCounts, stageRows, stageSummary, sendLink, stagesProblem, withoutEarlierTemplate, withTemplate,
   type Cell, type Exceptions, type StageRow,
 } from './stages.ts'
 import { fakeSub } from './testing.ts'
@@ -295,9 +295,20 @@ describe('manage stages helpers', () => {
   it('stagesProblemRefusesSharedTemplate', () => {
     const templates = [{ id: 'pres1', name: 'Event info' }]
     const other: Stage = { ...pres, id: 'visa', name: 'Visa letter', templateIds: ['visa', 'pres1'] }
-    expect(stagesProblem([pres, other], templates)).toBe('“Event info” is used by two stages')
-    expect(stagesProblem([pres, { ...other, templateIds: ['pres2'] }], [])).toBe('“pres2” is used by two stages') // deleted template
+    expect(stagesProblem([pres, other], templates)).toBe('“Event info” is used by Presentation request (earlier template) and Visa letter (earlier template).')
+    expect(stagesProblem([pres, { ...other, templateIds: ['pres2'] }], [])).toBe('“pres2” is used by Presentation request and Visa letter.') // deleted template
+    expect(stagesProblem([{ ...other, templateIds: ['pres1'] }, pres], templates)).toBe('“Event info” is used by Visa letter and Presentation request (earlier template).')
     expect(stagesProblem([pres, { ...other, templateIds: ['visa'] }], templates)).toBeNull()
+  })
+  it('withoutEarlierTemplateDropsOnlyThatEarlierOne', () => {
+    const s: Stage = { ...pres, templateIds: ['cur', 'a', 'b'] }
+    expect(withoutEarlierTemplate(s, 'a').templateIds).toEqual(['cur', 'b'])
+    expect(withoutEarlierTemplate(s, 'cur').templateIds).toEqual(['cur', 'a', 'b'])
+    expect(withoutEarlierTemplate(s, 'zzz').templateIds).toEqual(['cur', 'a', 'b'])
+    // After removing it the move is allowed.
+    const other: Stage = { ...pres, id: 'o', name: 'Other', templateIds: ['a'] }
+    expect(stagesProblem([s, other])).toBe('“a” is used by Presentation request (earlier template) and Other.')
+    expect(stagesProblem([withoutEarlierTemplate(s, 'a'), other])).toBeNull()
   })
   it('newStage starts blank on one template', () => {
     expect(newStage('x', 't1')).toEqual({ id: 'x', name: '', templateIds: ['t1'], dueFrom: null, appliesTo: 'everyone' })

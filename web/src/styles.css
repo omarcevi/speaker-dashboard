@@ -617,6 +617,12 @@ html.projector .emails-card { display: none; }
 @media (max-width: 720px) { .subnav { overflow-x: auto; } .subnav a { white-space: nowrap; } }
 
 /* Manage stages */
+.stage-set { border: 0; margin: 0; padding: 0; min-width: 0; }
+.stage .earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 12px; }
+.stage .earlier .hint { flex-basis: 100%; }
+.stage .earlier .hint:first-child { flex-basis: auto; }
+.stage .earlier-item { display: inline-flex; align-items: center; gap: 2px; color: var(--text); }
+.stage .earlier .icon-btn { width: 28px; height: 28px; }
 .stage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .stage { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 16px; }
 .stage .ord { display: flex; flex-direction: column; align-items: center; gap: 4px; }
