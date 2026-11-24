@@ -4,8 +4,8 @@ import { emailImagePath, imageProblem } from './emailImages.ts'
 describe('emailImagePath', () => {
   it('keeps names readable and safe', () => {
     expect(emailImagePath('my photo.png', 'u1')).toBe('emailImages/u1-my photo.png')
-    expect(emailImagePath('Şükrü/../x.png', 'u1')).toBe('emailImages/u1-' + 'Şükrü/../x.png'.replace(/[^A-Za-z0-9._\- ]+/g, '-'))
-    expect(emailImagePath('Şükrü/../x.png', 'u1')).not.toContain('/..')
+    expect(emailImagePath('Şükrü Çelik.png', 'u1')).toBe('emailImages/u1-S-k-r- -elik.png')
+    expect(emailImagePath('../x.png', 'u1')).toBe('emailImages/u1-.-x.png')
   })
   it('falls back for empty names', () => {
     expect(emailImagePath('', 'u1')).toBe('emailImages/u1-file')

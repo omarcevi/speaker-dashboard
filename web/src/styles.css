@@ -555,7 +555,7 @@ html.projector .emails-card { display: none; }
 .rich-bar button, .rich-bar select, .rich-link button { height: 32px; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid transparent; background: none; cursor: pointer; }
 .rich-bar select { border-color: var(--control); background: var(--surface); }
 .rich-bar button:hover, .rich-link button:hover { background: var(--raised); }
-.rich-bar button[aria-pressed="true"] { background: var(--active); font-weight: 500; }
+.rich-bar button[aria-pressed="true"], .rich-bar button.on { background: var(--active); font-weight: 500; }
 .rich-bar button[disabled] { color: var(--faint); cursor: default; }
 .rich-menu { position: relative; }
 .rich-menu ul { position: absolute; z-index: 5; top: 36px; left: 0; min-width: 200px; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-inner); }
@@ -563,6 +563,7 @@ html.projector .emails-card { display: none; }
 .rich-link { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--rule); }
 .rich-link input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid var(--control); background: var(--surface); }
 .rich-link button { border-color: var(--control); }
+.rich-link .rich-error { background: none; padding: 0 6px; align-self: center; }
 .rich-error { margin: 0; padding: 6px 12px; color: var(--no-ink); background: var(--no-bg); }
 .rich-body .ProseMirror { min-height: 200px; padding: 12px 16px; outline: none; }
 .rich-body .ProseMirror:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; border-radius: var(--r-inner); }

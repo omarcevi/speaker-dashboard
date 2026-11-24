@@ -18,11 +18,18 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
   const [fillOpen, setFillOpen] = useState(false)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [linkError, setLinkError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const linkBtnRef = useRef<HTMLButtonElement>(null)
+  const fillBtnRef = useRef<HTMLButtonElement>(null)
+  const fillRef = useRef<HTMLSpanElement>(null)
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] }, code: false, codeBlock: false,
+        link: { openOnClick: false, autolink: true },
+      }),
       Image,
     ],
     content: value,
@@ -48,15 +55,31 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
     }),
   })
 
+  useEffect(() => {
+    if (!fillOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!fillRef.current?.contains(e.target as Node)) setFillOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [fillOpen])
+
   if (!editor || !active) return null
 
   const openLink = () => {
     setUrl(editor.getAttributes('link').href ?? '')
+    setLinkError('')
     setLinkOpen(true)
   }
   const applyLink = () => {
-    const href = url.trim()
-    if (href) editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+    let href = url.trim()
+    if (!href) { setLinkOpen(false); return }
+    if (!/^(https?:\/\/|mailto:)/i.test(href) && !/^[a-z][a-z0-9+.-]*:/i.test(href)) href = `https://${href}`
+    if (!/^(https?:\/\/|mailto:)/i.test(href)) {
+      setLinkError('Use an http(s) or mailto: address')
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
     setLinkOpen(false)
   }
   const removeLink = () => {
@@ -69,7 +92,7 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
     setUploading(true)
     try {
       const src = await uploadEmailImage(file)
-      editor.chain().focus().setImage({ src }).run()
+      if (!editor.isDestroyed) editor.chain().focus().setImage({ src }).run()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
@@ -80,6 +103,10 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
   const insertFillIn = (name: string) => {
     editor.chain().focus().insertContent(`{{${name}}}`).run()
     setFillOpen(false)
+  }
+  const closeLink = () => {
+    setLinkOpen(false)
+    linkBtnRef.current?.focus()
   }
 
   return (
@@ -105,20 +132,24 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
           onClick={() => editor.chain().focus().toggleBulletList().run()}>• List</button>
         <button type="button" aria-label="Numbered list" aria-pressed={active.ordered}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}>1. List</button>
-        <button type="button" aria-label="Link" aria-pressed={active.link} onClick={openLink}>Link</button>
+        <button ref={linkBtnRef} type="button" aria-label="Link" aria-expanded={linkOpen}
+          className={active.link ? 'on' : undefined} onClick={openLink}>Link</button>
         <button type="button" aria-label="Image" disabled={uploading}
           onClick={() => fileRef.current?.click()}>{uploading ? 'Uploading…' : 'Image'}</button>
         <input ref={fileRef} type="file" accept="image/*" hidden
           onChange={(e) => void pickImage(e.target.files?.[0])} />
         {fillIns.length > 0 && (
-          <span className="rich-menu">
-            <button type="button" aria-haspopup="menu" aria-expanded={fillOpen}
+          <span className="rich-menu" ref={fillRef}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && fillOpen) { setFillOpen(false); fillBtnRef.current?.focus() }
+            }}>
+            <button ref={fillBtnRef} type="button" aria-expanded={fillOpen}
               onClick={() => setFillOpen((o) => !o)}>Insert fill-in</button>
             {fillOpen && (
-              <ul role="menu">
+              <ul>
                 {fillIns.map((f) => (
-                  <li key={f.name} role="none">
-                    <button type="button" role="menuitem" onClick={() => insertFillIn(f.name)}>{f.label}</button>
+                  <li key={f.name}>
+                    <button type="button" onClick={() => insertFillIn(f.name)}>{f.label}</button>
                   </li>
                 ))}
               </ul>
@@ -129,13 +160,14 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
       {linkOpen && (
         <div className="rich-link">
           <input type="url" value={url} placeholder="https://" aria-label="Link address" autoFocus
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => { setUrl(e.target.value); setLinkError('') }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); applyLink() }
-              if (e.key === 'Escape') setLinkOpen(false)
+              if (e.key === 'Escape') closeLink()
             }} />
           <button type="button" onClick={applyLink}>Apply</button>
           <button type="button" onClick={removeLink}>Remove</button>
+          {linkError && <span className="rich-error" role="alert">{linkError}</span>}
         </div>
       )}
       {error && <p className="rich-error" role="alert">{error}</p>}
