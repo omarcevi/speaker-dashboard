@@ -92,6 +92,15 @@ describe('email image rules', () => {
   it('denies an admin upload that is not an image', async () => {
     await assertFails(uploadBytes(img(as('adm1'), 'page.html'), new Uint8Array(1024), { contentType: 'text/html' }));
   });
+  it('lets an admin upload JPEG, GIF and WebP', async () => {
+    for (const [f, contentType] of [['a.jpg', 'image/jpeg'], ['a.gif', 'image/gif'], ['a.webp', 'image/webp']]) {
+      await assertSucceeds(uploadBytes(img(as('adm1'), f), new Uint8Array(1024), { contentType }));
+    }
+  });
+  it('denies an admin upload of other image types such as SVG', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'x.svg'), new Uint8Array(1024), { contentType: 'image/svg+xml' }));
+    await assertFails(uploadBytes(img(as('adm1'), 'x.heic'), new Uint8Array(1024), { contentType: 'image/heic' }));
+  });
   it('denies an admin upload of 5 MB or more', async () => {
     await assertFails(uploadBytes(img(as('adm1'), 'big.png'), new Uint8Array(6 * 1024 * 1024), png));
   });

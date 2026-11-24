@@ -13,11 +13,13 @@ describe('emailImagePath', () => {
 })
 
 describe('imageProblem', () => {
-  it('accepts a small image', () => {
-    expect(imageProblem({ type: 'image/png', size: 1000 })).toBeNull()
+  it('accepts a small PNG, JPEG, GIF or WebP', () => {
+    for (const type of ['image/png', 'image/jpeg', 'image/gif', 'image/webp']) expect(imageProblem({ type, size: 1000 })).toBeNull()
   })
-  it('refuses non-images', () => {
-    expect(imageProblem({ type: 'application/pdf', size: 10 })).toBe('Images only')
+  it('refuses other types, other images included', () => {
+    for (const type of ['application/pdf', 'image/svg+xml', 'image/heic', '']) {
+      expect(imageProblem({ type, size: 10 })).toBe('Use a PNG, JPEG, GIF or WebP image')
+    }
   })
   it('refuses 5 MB or more', () => {
     expect(imageProblem({ type: 'image/jpeg', size: 5 * 1024 * 1024 })).toBe('Images must be under 5 MB')

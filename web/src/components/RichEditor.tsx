@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
-import { uploadEmailImage } from '../lib/emailImages.ts'
+import { IMAGE_TYPES, uploadEmailImage } from '../lib/emailImages.ts'
 import { syncEditorContent } from '../lib/editorSync.ts'
 
 type FillIn = { name: string; label: string }
@@ -145,7 +145,7 @@ export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
           className={active.link ? 'on' : undefined} onClick={openLink}>Link</button>
         <button type="button" aria-label="Image" disabled={uploading}
           onClick={() => fileRef.current?.click()}>{uploading ? 'Uploading…' : 'Image'}</button>
-        <input ref={fileRef} type="file" accept="image/*" hidden
+        <input ref={fileRef} type="file" accept={IMAGE_TYPES.join(',')} hidden
           onChange={(e) => void pickImage(e.target.files?.[0])} />
         {fillIns.length > 0 && (
           <span className="rich-menu" ref={fillRef}

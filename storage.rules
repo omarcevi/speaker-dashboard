@@ -20,7 +20,7 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
       allow create: if request.auth != null
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
-        && request.resource.contentType.matches('image/.*')
+        && request.resource.contentType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
         && request.resource.size < 5 * 1024 * 1024;
       allow delete: if request.auth != null
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';

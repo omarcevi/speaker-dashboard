@@ -3,6 +3,8 @@ import { storage } from '../firebase.ts'
 import { safeFileName } from './emails.ts'
 
 const MAX_BYTES = 5 * 1024 * 1024
+/** The image types email clients show; storage.rules allows the same list. */
+export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
 export function emailImagePath(fileName: string, uuid: string): string {
   return `emailImages/${uuid}-${safeFileName(fileName)}`
@@ -10,7 +12,7 @@ export function emailImagePath(fileName: string, uuid: string): string {
 
 /** User-facing reason a file can't be used as an email image, or null when it can. */
 export function imageProblem(file: { type: string; size: number }): string | null {
-  if (!file.type.startsWith('image/')) return 'Images only'
+  if (!IMAGE_TYPES.includes(file.type)) return 'Use a PNG, JPEG, GIF or WebP image'
   if (file.size >= MAX_BYTES) return 'Images must be under 5 MB'
   return null
 }
