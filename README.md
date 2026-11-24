@@ -166,6 +166,24 @@ The owner does these steps once:
 
 Locally, the emulator also has two admin-only callables for testing: `devInjectMail({ threadId, kind: 'reply' | 'bounce', text })` adds a fake reply or bounce to a thread, and `devRunMail()` runs the send queue and the reply check once. Neither is deployed.
 
+## Reply assistant
+
+The reply assistant helps the team with speaker replies in **Emails**. Each new reply is read with the Gemini Decisions API (`gemini-decision-1`). A reply that very clearly needs no answer (a thank-you, say) goes to **Cleared by AI**, where anyone can press **Undo**. A reply that may be a withdrawal gets a warning. For replies that need an answer, the assistant drafts one with Gemini on Vertex AI (EU), using the **Speaker facts** and fields under **Event settings**, the templates, the speaker's talk and their own conversation. Nothing is ever sent automatically: an admin reviews and sends every draft.
+
+**Setup.** The reading needs an API key from an AI Studio project with billing turned on, so the text is not used for training:
+
+```bash
+npx firebase functions:secrets:set GEMINI_API_KEY --project speaker-dashboard-9c149
+```
+
+Deploying grants the functions' service account access to the secret. Drafts use Vertex AI and need no extra key.
+
+**Cut-offs.** They are in `functions/src/shared/replyAi.ts`: a reply is cleared when "no answer needed" is at least 0.95 and "withdrawing" is under 0.10, and it is flagged as a possible withdrawal from 0.30.
+
+**No backfill.** Only replies that arrive after the deploy are read. Older conversations stay as they are.
+
+Locally, the seed script adds three sample conversations (needs answer with a draft, cleared by AI, withdrawing) and the emulator uses fake clients, so nothing calls Google.
+
 ## AI assist
 
 Three features help reviewers get through the talks faster:
