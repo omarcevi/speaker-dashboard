@@ -1,17 +1,59 @@
 import { useState } from 'react'
 import { fillInsIn, validEventKey } from '../../../functions/src/email/fillIns.ts'
 import type { EventField } from '../../../functions/src/model.ts'
-import { cleanEmailHtml, isBlankHtml, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
+import { cleanSignatureHtml, isBlankHtml, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { EmailFrame } from '../components/EmailFrame.tsx'
 import EmailsTabs from '../components/EmailsTabs.tsx'
 import LazyRichEditor from '../components/LazyRichEditor.tsx'
 import { saveEvent } from '../data/actions.ts'
 import { useData } from '../data/DataProvider.tsx'
-import { eventKeyOf } from '../lib/emails.ts'
+import { eventKeyOf, usesSignatureLayout } from '../lib/emails.ts'
 
 const MAX_FIELDS = 50 // the rules' cap
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const LAYOUT_NOTE = "This signature uses a layout the visual editor can't keep. Edit it as HTML."
+
+/**
+ * The team signature, edited visually or as HTML. A signature with a table or inline styles (pasted from a Gmail
+ * signature, say) opens as HTML, and switching it to the visual editor takes a second click.
+ */
+function SignatureEditor({ value, onChange }: { value: string; onChange: (html: string) => void }) {
+  const [mode, setMode] = useState<'visual' | 'html'>(() => (usesSignatureLayout(value) ? 'html' : 'visual'))
+  const [confirming, setConfirming] = useState(false)
+  const layout = mode === 'html' && usesSignatureLayout(value)
+  const toVisual = () => {
+    if (mode === 'visual') return
+    if (layout && !confirming) { setConfirming(true); return }
+    setConfirming(false)
+    setMode('visual')
+  }
+  return (
+    <>
+      <div className="sig-head">
+        <div className="seg mode" role="group" aria-label="Signature editor">
+          <button type="button" aria-pressed={mode === 'visual'} onClick={toVisual}>Visual</button>
+          <button type="button" aria-pressed={mode === 'html'} onClick={() => { setConfirming(false); setMode('html') }}>HTML</button>
+        </div>
+        {layout && (
+          <p className="hint" role={confirming ? 'alert' : undefined}>
+            {LAYOUT_NOTE}
+            {confirming && <> <button type="button" className="btn sm" onClick={toVisual}>Switch anyway</button></>}
+          </p>
+        )}
+      </div>
+      {mode === 'visual' ? (
+        <LazyRichEditor value={value} ariaLabel="Team signature" fillIns={[]} onChange={onChange} />
+      ) : (
+        <div className="sig-html">
+          <textarea className="area code" aria-label="Team signature HTML" spellCheck={false} value={value}
+            onChange={(e) => onChange(e.target.value)} />
+          {isBlankHtml(value) ? <p className="muted">No signature yet.</p> : <EmailFrame html={cleanSignatureHtml(value)} title="Signature preview" />}
+        </div>
+      )}
+    </>
+  )
+}
 
 function EventForm({ initial, initialSignature }: { initial: EventField[]; initialSignature: string }) {
   const { me } = useAuth()
@@ -129,10 +171,9 @@ function EventForm({ initial, initialSignature }: { initial: EventField[]; initi
           </div>
           <div className="card pad">
             {admin ? (
-              <LazyRichEditor value={signature} ariaLabel="Team signature" fillIns={[]}
-                onChange={(html) => { setSaved(false); setSignature(html) }} />
+              <SignatureEditor value={signature} onChange={(html) => { setSaved(false); setSignature(html) }} />
             ) : isBlankHtml(signature) ? <p className="muted">No signature yet.</p> : (
-              <EmailFrame html={cleanEmailHtml(signature)} title="Team signature" />
+              <EmailFrame html={cleanSignatureHtml(signature)} title="Team signature" />
             )}
           </div>
         </section>

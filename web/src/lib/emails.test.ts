@@ -3,7 +3,7 @@ import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
   ago, bounceSummary, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
-  emailTitle, historyChipLabel, historyByLine, speakerHistory, emailedLine, istanbulTime,
+  emailTitle, historyChipLabel, usesSignatureLayout, historyByLine, speakerHistory, emailedLine, istanbulTime,
 } from './emails.ts'
 
 const ts = (ms: number) => ({ toMillis: () => ms })
@@ -290,5 +290,14 @@ describe('bounceSummary', () => {
     const out = bounceSummary('x'.repeat(500))
     expect(out.length).toBe(300)
     expect(out.endsWith('…')).toBe(true)
+  })
+})
+
+describe('usesSignatureLayout', () => {
+  it('spotsTablesAndStyles', () => {
+    expect(usesSignatureLayout('<TABLE><tr><td>x</td></tr></table>')).toBe(true)
+    expect(usesSignatureLayout('<span style="color:red">x</span>')).toBe(true)
+    expect(usesSignatureLayout('<p><b>The team</b> <a href="https://x.test">x.test</a></p>')).toBe(false)
+    expect(usesSignatureLayout('<p>Our tables and style= notes</p>')).toBe(false)
   })
 })

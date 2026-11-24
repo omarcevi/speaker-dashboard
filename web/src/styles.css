@@ -579,3 +579,10 @@ html.projector .emails-card { display: none; }
 .rich-loading { min-height: 247px; background: var(--raised); }
 .email-frame { display: block; width: 100%; min-height: 320px; resize: vertical; border: 1px solid var(--border); border-radius: var(--r-inner); background: #fff; }
 .email-frame.compact { min-height: 120px; }
+.seg.mode button[aria-pressed="true"] { background: var(--active); }
+.sig-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.sig-head .hint { margin: 0; flex: 1; min-width: 200px; }
+.sig-head .hint .btn { margin-left: 4px; }
+.sig-html { display: grid; gap: 12px; }
+.area.code { min-height: 200px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 18px; white-space: pre; overflow-x: auto; }
+.sig-html .email-frame { min-height: 160px; }
