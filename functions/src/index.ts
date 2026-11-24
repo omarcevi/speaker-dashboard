@@ -2,7 +2,8 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineString } from 'firebase-functions/params';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { defineSecret, defineString } from 'firebase-functions/params';
 import { getStorage } from 'firebase-admin/storage';
 import { google } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
@@ -27,6 +28,9 @@ import {
 import { AttachmentTooLarge, attachmentFor, pollMail } from './email/pollMail.js';
 import { seedTemplates } from './email/seedTemplates.js';
 import { sharedFakeGmail } from './testing/fakeGmail.js';
+import { assistReply, draftReply, ReplyNotFound, replyErrorCode } from './email/assistReply.js';
+import type { ReplyAi } from './ai/replyAi.js';
+import { fakeReplyAi } from './testing/fakeReplyAi.js';
 
 initializeApp();
 
@@ -41,6 +45,8 @@ const MAIL_USER = defineString('MAIL_USER', isEmulator() ? { default: 'organizer
 const MAIL_SENDER = defineString('MAIL_SENDER', isEmulator() ? { default: 'speakers@example.org' } : {});
 // The Gmail label put on every email the dashboard sends, so its conversations can be filtered in MAIL_USER's inbox.
 const MAIL_LABEL = defineString('MAIL_LABEL', { default: 'Speaker Dashboard' });
+// Gemini Developer API key for reply decisions. Never read in the emulator (its reply AI is the fake).
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 
 const region = 'europe-west1';
 
@@ -373,6 +379,50 @@ export const pollMailbox = onSchedule(
     }
   },
 );
+
+// ---- AI reply assistant ----
+
+/**
+ * Reply decisions (Gemini Developer API) and drafts (Vertex, `eu`). The emulator gets the fake and never touches the
+ * secret. The SDK is imported on first use, as for aiClient().
+ */
+async function replyAi(): Promise<ReplyAi> {
+  if (isEmulator()) return fakeReplyAi();
+  const project = process.env.GCLOUD_PROJECT;
+  if (!project) throw new Error('GCLOUD_PROJECT not set');
+  const { liveReplyAi } = await import('./ai/replyAi.js');
+  return liveReplyAi({ apiKey: GEMINI_API_KEY.value(), project });
+}
+
+/** Reads each new speaker reply; not retried (a failure is recorded on the thread as a code). */
+export const assistNewReply = onDocumentCreated(
+  {
+    document: 'threads/{threadId}/messages/{messageId}', region, serviceAccount: SYNC_SERVICE_ACCOUNT,
+    secrets: [GEMINI_API_KEY], retry: false, timeoutSeconds: 120,
+  },
+  async event => {
+    if (event.data?.data()?.kind !== 'reply') return;
+    const { threadId, messageId } = event.params;
+    try {
+      await assistReply(getFirestore(), await replyAi(), { threadId, messageId, now: Date.now() });
+    } catch (e) {
+      console.error(`Reply assist: run failed thread=${threadId} (${replyErrorCode(e)})`);
+    }
+  },
+);
+
+export const draftReplyNow = onCall({ ...mailOpts, secrets: [GEMINI_API_KEY] }, async request => {
+  await actor(request.auth?.uid);
+  const { threadId } = (request.data ?? {}) as { threadId?: unknown };
+  if (!isId(threadId)) throw bad('threadId must be a thread id.');
+  try {
+    return await draftReply(getFirestore(), await replyAi(), { threadId, now: Date.now() });
+  } catch (e) {
+    if (e instanceof ReplyNotFound) throw new HttpsError('not-found', e.message);
+    console.error(`Reply draft: failed thread=${threadId} (${replyErrorCode(e)})`);
+    throw new HttpsError('internal', 'Could not draft a reply — try again later.');
+  }
+});
 
 // ---- Emulator-only dev hooks: not exported (so never deployed) outside the emulator, and refuse there too. ----
 
