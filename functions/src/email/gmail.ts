@@ -8,6 +8,8 @@ export interface GmailClient {
   send(raw: string, threadId?: string): Promise<{ id: string; threadId: string }>
   getThread(threadId: string): Promise<GmailMessage[]>
   getAttachment(messageId: string, attachmentId: string): Promise<Buffer>
+  /** Adds the dashboard's Gmail label to a message, creating the label the first time. */
+  label(messageId: string): Promise<void>
 }
 
 export interface DelegatedGmailDeps {
@@ -17,12 +19,13 @@ export interface DelegatedGmailDeps {
   now?: () => number
 }
 
-const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly'
+// gmail.modify reads mail and adds labels; the dashboard never archives, trashes or deletes.
+const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
 const REFRESH_MARGIN_MS = 5 * 60 * 1000
 
-export function delegatedGmail(opts: { serviceAccount: string; user: string }, deps: DelegatedGmailDeps = {}): GmailClient {
+export function delegatedGmail(opts: { serviceAccount: string; user: string; label?: string }, deps: DelegatedGmailDeps = {}): GmailClient {
   const doFetch = deps.fetch ?? fetch
   const now = deps.now ?? Date.now
   let auth: GoogleAuth | undefined
@@ -74,7 +77,35 @@ export function delegatedGmail(opts: { serviceAccount: string; user: string }, d
     return (await res.json()) as T
   }
 
+  const labelName = opts.label ?? 'Speaker Dashboard'
+  let labelId: Promise<string> | undefined
+  async function findOrCreateLabel(): Promise<string> {
+    const find = async () => (await call<{ labels?: { id: string; name: string }[] }>('labels', '/labels')).labels
+      ?.find(l => l.name.toLowerCase() === labelName.toLowerCase())?.id
+    const found = await find()
+    if (found) return found
+    try {
+      const body = { name: labelName, labelListVisibility: 'labelShow', messageListVisibility: 'show' }
+      return (await call<{ id: string }>('createLabel', '/labels', { body })).id
+    } catch (e) {
+      // Another run may have created it in the meantime (409).
+      const again = await find()
+      if (again) return again
+      throw e
+    }
+  }
+
   return {
+    async label(messageId) {
+      try {
+        const id = await (labelId ??= findOrCreateLabel())
+        await call('label', `/messages/${encodeURIComponent(messageId)}/modify`, { body: { addLabelIds: [id] } })
+      } catch (e) {
+        // Look it up again next time: the label may have been renamed or deleted in Gmail.
+        labelId = undefined
+        throw e
+      }
+    },
     async send(raw, threadId) {
       const r = await call<{ id: string; threadId: string }>('send', '/messages/send', { body: threadId ? { raw, threadId } : { raw } })
       return { id: r.id, threadId: r.threadId }

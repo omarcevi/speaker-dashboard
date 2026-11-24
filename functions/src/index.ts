@@ -39,6 +39,8 @@ const isEmulator = () => process.env.FUNCTIONS_EMULATOR === 'true';
 // and has under Gmail's "Send mail as". Required on deploy; the emulator uses made-up addresses (its Gmail is the fake).
 const MAIL_USER = defineString('MAIL_USER', isEmulator() ? { default: 'organizer@example.org' } : {});
 const MAIL_SENDER = defineString('MAIL_SENDER', isEmulator() ? { default: 'speakers@example.org' } : {});
+// The Gmail label put on every email the dashboard sends, so its conversations can be filtered in MAIL_USER's inbox.
+const MAIL_LABEL = defineString('MAIL_LABEL', { default: 'Speaker Dashboard' });
 
 const region = 'europe-west1';
 
@@ -155,6 +157,7 @@ function emulatorGmail(): GmailClient {
   return {
     send: (raw, threadId) => fake.send(raw, threadId),
     getAttachment: (messageId, attachmentId) => fake.getAttachment(messageId, attachmentId),
+    label: (messageId) => fake.label(messageId),
     async getThread(threadId) {
       const injected = await getFirestore().collection('devMail').where('threadId', '==', threadId).get();
       return [...await fake.getThread(threadId), ...injected.docs.map(d => JSON.parse(d.get('json') as string) as GmailMessage)];
@@ -167,7 +170,7 @@ let realGmail: GmailClient | undefined;
 function gmailClient(): GmailClient {
   if (isEmulator()) return emulatorGmail();
   // Kept per instance so its access token is reused across runs.
-  return realGmail ??= delegatedGmail({ serviceAccount: SYNC_SERVICE_ACCOUNT.value(), user: MAIL_USER.value() });
+  return realGmail ??= delegatedGmail({ serviceAccount: SYNC_SERVICE_ACCOUNT.value(), user: MAIL_USER.value(), label: MAIL_LABEL.value() });
 }
 
 const readAttachment = async (path: string) => (await getStorage().bucket().file(path).download())[0];

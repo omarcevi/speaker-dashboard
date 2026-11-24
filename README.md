@@ -141,13 +141,15 @@ The owner does these steps once:
    ```
    As a Workspace super admin, open the Google Admin console (admin.google.com) → **Security** → **Access and data control** → **API controls** → **Manage domain-wide delegation** → **Add new**. Paste the client id and these two scopes, comma-separated, exactly:
    ```
-   https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.readonly
+   https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.modify
    ```
+   `gmail.modify` lets the dashboard read replies and put its label on the emails it sends. The dashboard never archives, trashes or deletes mail.
 4. **Set the addresses** in `functions/.env`:
    ```
    MAIL_USER=<the Workspace user the dashboard signs in to>
    MAIL_SENDER=<the From address: the same user, or a group it can send as>
    ```
+   Every email the dashboard sends gets the Gmail label **Speaker Dashboard** in `MAIL_USER`'s mailbox, created on the first send. Search `label:speaker-dashboard` to see those conversations, replies included. To use another name, set `MAIL_LABEL`.
 5. **Deploy functions and rules** when ready:
    ```bash
    npx firebase deploy --only functions,firestore:rules,storage --project speaker-dashboard-9c149

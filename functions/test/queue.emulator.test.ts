@@ -121,6 +121,7 @@ describe('queue', () => {
     expect(plainText(raw)).toContain('Venue: Hall A')
     const doc = await email(id)
     expect(doc).toMatchObject({ state: 'sent', gmailMessageId: 'fake-msg-1', threadId: 'fake-thread-1', reason: null })
+    expect(gmail.labelled).toEqual(['fake-msg-1'])
     expect(doc.rfcMessageId).toBe(header(raw, 'Message-ID'))
     expect(doc.rfcMessageId).toMatch(/@example\.com>$/)
     expect(doc.sentAt!.toMillis()).toBe(T0 + MIN)
@@ -204,6 +205,13 @@ describe('queue', () => {
     expect(await run(T0 + 21 * MIN)).toEqual({ sent: 1, failed: 0, held: 0, unknown: 0 })
     expect(gmail.sent).toHaveLength(1)
     expect(header(gmail.sent[0].raw, 'To')).toBe(ADA)
+  })
+
+  it('a label failure does not change a sent email', async () => {
+    await enqueue(db, input({ speakerKeys: [ADA] }), admin, T0)
+    gmail.label = async () => { throw new Error('Gmail label failed (403)') }
+    expect(await run(T0 + MIN)).toEqual({ sent: 1, failed: 0, held: 0, unknown: 0 })
+    expect(await email(idFor('b1', ADA))).toMatchObject({ state: 'sent', gmailMessageId: 'fake-msg-1' })
   })
 
   it('gmail 4xx marks failed', async () => {

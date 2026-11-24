@@ -76,7 +76,7 @@ describe('delegatedGmail', () => {
     expect(claims).toMatchObject({
       iss: 'sa@p.iam.gserviceaccount.com',
       sub: 'me@example.com',
-      scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly',
+      scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify',
       aud: 'https://oauth2.googleapis.com/token',
       iat: 1000,
       exp: 4600,
@@ -101,6 +101,66 @@ describe('delegatedGmail', () => {
     const call = fetchFn.mock.calls.find(c => String(c[0]).includes('/messages/send'))!
     expect(JSON.parse(String(call[1]?.body))).toEqual({ raw, threadId: 't9' })
     expect((call[1]?.headers as Record<string, string>).Authorization).toBe('Bearer tok')
+  })
+
+  describe('label', () => {
+    // A tiny Gmail labels API: `existing` labels, records creates and modifies.
+    function labelled(existing: { id: string; name: string }[], opts: { failModify?: number } = {}) {
+      const labels = [...existing]
+      const creates: unknown[] = []
+      const modifies: { path: string; body: unknown }[] = []
+      let failModify = opts.failModify ?? 0
+      const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const u = String(url)
+        if (u.startsWith('https://oauth2.googleapis.com/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }))
+        if (u.endsWith('/labels') && init?.method === 'GET') return new Response(JSON.stringify({ labels }))
+        if (u.endsWith('/labels')) {
+          const b = JSON.parse(String(init?.body))
+          creates.push(b)
+          labels.push({ id: 'Label_new', name: b.name })
+          return new Response(JSON.stringify({ id: 'Label_new', name: b.name }))
+        }
+        if (u.includes('/modify')) {
+          if (failModify > 0) { failModify--; return new Response('{}', { status: 400 }) }
+          modifies.push({ path: u, body: JSON.parse(String(init?.body)) })
+          return new Response('{}')
+        }
+        return new Response('{}', { status: 404 })
+      })
+      const g = delegatedGmail(
+        { serviceAccount: 's', user: 'x@example.com', label: 'Speaker Dashboard' },
+        { authRequest: async () => ({ data: { signedJwt: 'j' } }), fetch: fetchFn as unknown as typeof fetch },
+      )
+      const listCalls = () => fetchFn.mock.calls.filter(c => String(c[0]).endsWith('/labels') && c[1]?.method === 'GET').length
+      return { g, creates, modifies, listCalls }
+    }
+
+    it('creates the label once when missing, then adds it to each message', async () => {
+      const { g, creates, modifies, listCalls } = labelled([{ id: 'INBOX', name: 'INBOX' }])
+      await g.label('m1')
+      await g.label('m2')
+      expect(creates).toEqual([{ name: 'Speaker Dashboard', labelListVisibility: 'labelShow', messageListVisibility: 'show' }])
+      expect(listCalls()).toBe(1)
+      expect(modifies).toEqual([
+        { path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages/m1/modify', body: { addLabelIds: ['Label_new'] } },
+        { path: 'https://gmail.googleapis.com/gmail/v1/users/me/messages/m2/modify', body: { addLabelIds: ['Label_new'] } },
+      ])
+    })
+
+    it('reuses an existing label, matching the name case-insensitively', async () => {
+      const { g, creates, modifies } = labelled([{ id: 'Label_7', name: 'speaker dashboard' }])
+      await g.label('m1')
+      expect(creates).toEqual([])
+      expect(modifies[0].body).toEqual({ addLabelIds: ['Label_7'] })
+    })
+
+    it('looks the label up again after a failure (it may have been deleted in Gmail)', async () => {
+      const { g, modifies, listCalls } = labelled([{ id: 'Label_7', name: 'Speaker Dashboard' }], { failModify: 1 })
+      await expect(g.label('m1')).rejects.toThrow(/Gmail label failed \(400\)/)
+      await g.label('m2')
+      expect(listCalls()).toBe(2)
+      expect(modifies).toHaveLength(1)
+    })
   })
 
   it('errors carry the status but no response body', async () => {

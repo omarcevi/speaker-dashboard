@@ -4,6 +4,8 @@ import type { GmailMessage } from '../email/parseMessage.js'
 
 export type FakeGmail = GmailClient & {
   sent: { raw: string; threadId?: string }[]
+  /** Message ids given the dashboard label, in order. */
+  labelled: string[]
   addReply(threadId: string, m: GmailMessage): void
   failNext(err: Error): void
 }
@@ -29,11 +31,16 @@ function toMessage(raw: string, id: string, threadId: string): GmailMessage {
 export function fakeGmail(): FakeGmail {
   const threads = new Map<string, GmailMessage[]>()
   const sent: FakeGmail['sent'] = []
+  const labelled: string[] = []
   let msgN = 0
   let threadN = 0
   let failure: Error | undefined
   return {
     sent,
+    labelled,
+    async label(messageId) {
+      labelled.push(messageId)
+    },
     async send(raw, threadId) {
       if (failure) {
         const e = failure

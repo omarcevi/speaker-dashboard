@@ -239,6 +239,9 @@ export async function processQueue(
       // Sent but not recorded: the doc stays `sending` and becomes `unknown` on a later run.
       console.error(`Email queue: sent ${d.id} but could not record it`)
     }
+    // The label only helps find dashboard mail in Gmail; a failure never changes a sent email.
+    await gmail.label(result.id).catch((err: unknown) =>
+      console.warn(`Email queue: could not label ${d.id}: ${err instanceof Error ? err.message : 'unknown error'}`))
   }
 
   if (counts.sent) await db.doc('meta/mail').set({ lastSendAt: Timestamp.fromMillis(opts.now) }, { merge: true })
