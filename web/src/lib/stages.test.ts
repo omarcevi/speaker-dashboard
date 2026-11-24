@@ -47,6 +47,10 @@ describe('stageCell', () => {
   it('problem', () => {
     for (const state of ['failed', 'unknown', 'held'] as const) expect(cell([email({ state })]).kind).toBe('problem')
   })
+  it('clearedReplyIsReplied', () => {
+    const t = { ...thread(10, 5), lastReplyId: 'm1', settled: { messageId: 'm1', by: 'ai', byName: 'AI', at: ts(11) } }
+    expect(cell([email({ threadId: 't1' })], { threads: new Map([['t1', t]]) }).kind).toBe('replied')
+  })
   it('answerNeeded', () => {
     expect(cell([email({ threadId: 't1' })], { threads: new Map([['t1', thread(10, 5)]]) }).kind).toBe('answer')
   })

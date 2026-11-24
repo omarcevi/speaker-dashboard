@@ -7,15 +7,17 @@ import EmailsTabs from '../components/EmailsTabs.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
-import { ago, isListed, lastActivity, latestLine, needsLook, shortDateTime } from '../lib/emails.ts'
+import { clearedByAi } from '../../../functions/src/shared/replyAi.ts'
+import { ago, aiNote, isListed, lastActivity, latestLine, needsLook, shortDateTime } from '../lib/emails.ts'
 
 type Email = EmailDoc & { id: string }
-type Filter = 'look' | 'all' | 'replied' | 'bounced' | 'scheduled'
+type Filter = 'look' | 'ai' | 'all' | 'replied' | 'bounced' | 'scheduled'
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 const FILTERS: [Filter, string, (e: Email, t: ThreadDoc | undefined) => boolean][] = [
   ['look', 'Needs a look', needsLook],
+  ['ai', 'Cleared by AI', (_e, t) => clearedByAi(t)],
   ['all', 'All', () => true],
   ['replied', 'Replied', (e) => e.replyCount > 0],
   ['bounced', 'Bounced', (e) => e.bounce !== null],
@@ -104,7 +106,7 @@ export default function EmailsPage() {
                           {strong ? <><b>{cut < 0 ? line : line.slice(0, cut)}</b>{cut < 0 ? '' : line.slice(cut)}</> : line}
                         </div>
                       </td>
-                      <td><StateChip email={e} /></td>
+                      <td><StateChip email={e} />{aiNote(thread)?.tone === 'warn' && <> <span className="mstate warn">May be withdrawing</span></>}</td>
                       <td>
                         <div>{planned ? '—' : shortDateTime((e.sentAt ?? e.createdAt).toMillis())}</div>
                         <div className="cell-sub">{e.byName}</div>
