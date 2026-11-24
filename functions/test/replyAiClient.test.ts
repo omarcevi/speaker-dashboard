@@ -96,6 +96,14 @@ describe('draftPrompt', () => {
     for (const s of ['FACTS-X', 'Venue', 'Hall 5', 'TplName', 'Talk One', 'Ada']) expect(p).toContain(s);
     expect(p.indexOf('FIRST')).toBeLessThan(p.indexOf('SECOND'));
   });
+  it('caps each template at 4000 chars and all templates at 20000', () => {
+    const templates = Array.from({ length: 8 }, (_, i) => ({ name: `T${i}`, text: '①②③④⑤⑥⑦⑧'[i] + '7'.repeat(5999) }));
+    const p = draftPrompt({ ...base, templates });
+    expect(p.match(/7/g)!.length).toBeLessThanOrEqual(20000);
+    expect(p).toContain('①');
+    expect(/①7*/.exec(p)![0].length).toBe(4000);
+    expect(p).not.toContain('⑧');
+  });
   it('keeps the newest messages when over 30000 chars', () => {
     const conversation = Array.from({ length: 10 }, (_, i) => ({ from: 'speaker' as const, at: i, text: `M${i}` + 'z'.repeat(4000) }));
     const p = draftPrompt({ ...base, conversation });

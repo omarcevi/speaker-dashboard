@@ -112,7 +112,8 @@ export async function setStageException(speakerKey: string, stageId: string, whi
   })
 }
 
-/** "No reply needed" for the thread's newest reply. Rules allow only this exact shape, for the current lastReplyId. */
+/** "No reply needed" for the thread's newest reply. Rules check only the shape and who marked it, not lastReplyId:
+ *  a mark for a reply that is no longer the newest is simply ignored (currentFor). */
 export async function settleReply(threadId: string, messageId: string, me: Actor): Promise<void> {
   await updateDoc(doc(db, 'threads', threadId), { settled: { messageId, by: me.uid, byName: me.name, at: serverTimestamp() } })
 }

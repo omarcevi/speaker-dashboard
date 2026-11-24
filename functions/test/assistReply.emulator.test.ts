@@ -263,6 +263,13 @@ describe('draftReply', () => {
     expect(t.draft).toBeUndefined()
   })
 
+  it('rethrows the draft error even when clearing drafting fails too', async () => {
+    await withReply('Can I bring my laptop?')
+    const boom = new Error('draft boom')
+    const ai: ReplyAi = { ...fakeReplyAi(), draft: async () => { await db.doc('threads/th-1').delete(); throw boom } }
+    await expect(draftReply(db, ai, { threadId: 'th-1', now: T0 })).rejects.toBe(boom)
+  })
+
   it('refuses a thread without a reply', async () => {
     await db.doc('threads/th-1').update({ lastReplyId: FieldValue.delete() })
     await expect(draftReply(db, fakeReplyAi(), { threadId: 'th-1', now: T0 })).rejects.toBeInstanceOf(ReplyNotFound)

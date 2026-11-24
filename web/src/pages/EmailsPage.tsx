@@ -8,7 +8,7 @@ import { useData } from '../data/DataProvider.tsx'
 import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
 import { clearedByAi } from '../../../functions/src/shared/replyAi.ts'
-import { ago, aiNote, isListed, lastActivity, latestLine, needsLook, shortDateTime } from '../lib/emails.ts'
+import { ago, isListed, lastActivity, latestLine, needsLook, shortDateTime, showsWithdrawWarning } from '../lib/emails.ts'
 
 type Email = EmailDoc & { id: string }
 type Filter = 'look' | 'ai' | 'all' | 'replied' | 'bounced' | 'scheduled'
@@ -106,7 +106,7 @@ export default function EmailsPage() {
                           {strong ? <><b>{cut < 0 ? line : line.slice(0, cut)}</b>{cut < 0 ? '' : line.slice(cut)}</> : line}
                         </div>
                       </td>
-                      <td><StateChip email={e} />{aiNote(thread)?.tone === 'warn' && <> <span className="mstate warn">May be withdrawing</span></>}</td>
+                      <td><StateChip email={e} />{showsWithdrawWarning(thread) && <> <span className="mstate warn">May be withdrawing</span></>}</td>
                       <td>
                         <div>{planned ? '—' : shortDateTime((e.sentAt ?? e.createdAt).toMillis())}</div>
                         <div className="cell-sub">{e.byName}</div>

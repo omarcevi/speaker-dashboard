@@ -21,6 +21,8 @@ export const PREVIOUS_CAP = 4000;
 export const CONVERSATION_CAP = 30_000;
 export const EARLIER_CAP = 2000;
 export const EARLIER_TOTAL_CAP = 6000;
+export const TEMPLATE_CAP = 4000;
+export const TEMPLATES_CAP = 20_000;
 
 export const DECISION_INSTRUCTIONS = "What does the DevFest Istanbul speaker team need to do about this speaker's latest email?";
 export const DECISION_CRITERIA = {
@@ -79,7 +81,16 @@ export function draftPrompt(i: DraftInput): string {
     size += msgs[k].length;
   }
   const fields = i.eventFields.map((f) => `${clean(f.label)}: ${clean(f.value)}`).join('\n');
-  const templates = i.templates.map((t) => `<template name="${clean(t.name)}">\n${clean(t.text)}\n</template>`).join('\n');
+  // Each template capped, and only those that fit in the total, in order.
+  const tpl: string[] = [];
+  let tplSize = 0;
+  for (const t of i.templates) {
+    const text = t.text.slice(0, TEMPLATE_CAP);
+    if (tplSize + text.length > TEMPLATES_CAP) break;
+    tpl.push(`<template name="${clean(t.name)}">\n${clean(text)}\n</template>`);
+    tplSize += text.length;
+  }
+  const templates = tpl.join('\n');
   return [
     `<facts>\n${clean(i.facts)}\n</facts>`,
     `<event_fields>\n${fields}\n</event_fields>`,

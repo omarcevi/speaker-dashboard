@@ -7,7 +7,7 @@ import { useSpeakers } from '../data/useSpeakers.ts'
 import { useThreadMessages, type ThreadMessage } from '../data/useThreadMessages.ts'
 import { bounceSummary, displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
 import { initials } from '../lib/initials.ts'
-import { canDraft, currentDraft, prefill, seenOf, sendStep, type Seen } from '../lib/replyAssist.ts'
+import { askedNow, canDraft, currentDraft, isDrafting, prefill, seenOf, sendStep, type Seen } from '../lib/replyAssist.ts'
 import { EmailFrame } from './EmailFrame.tsx'
 import { IconDownload } from './Icons.tsx'
 import { AiLine, DraftButton, GapConfirm, SuggestedReply } from './ReplyAssist.tsx'
@@ -139,14 +139,15 @@ function ReplyBox({ threadId, speakerKey, firstName, thread }: { threadId: strin
   const draft = currentDraft(thread)
   const [body, setBody] = useState(draft?.text ?? '')
   const [seen, setSeen] = useState<Seen | null>(draft ? seenOf(draft) : null)
-  // Set when the admin presses Draft a reply / Redraft; the next new draft then replaces the box even if they typed.
-  const [asked, setAsked] = useState(false)
+  // The reply the admin pressed Draft a reply / Redraft for; the next new draft for that same reply then replaces the
+  // box even if they typed. A newer reply drops the request, so its auto-draft never replaces typed text.
+  const [askedFor, setAskedFor] = useState<string | null>(null)
   // Otherwise a newer draft replaces the box only while it is empty or still holds the last draft.
-  const next = prefill(body, seen, draft, asked)
+  const next = prefill(body, seen, draft, askedNow(askedFor, thread))
   if (next) {
     setBody(next.body)
     setSeen(next.seen)
-    setAsked(false)
+    setAskedFor(null)
   }
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -191,9 +192,9 @@ function ReplyBox({ threadId, speakerKey, firstName, thread }: { threadId: strin
         <span className="hint">Sent from the team mailbox in the same Gmail conversation, with the team signature added</span>
         <span className="actions">
           {canDraft(thread) && (
-            <DraftButton threadId={threadId} hasDraft={draft !== null} drafting={drafting || !!thread?.drafting}
-              onBusy={(b) => { setDrafting(b); if (b) setAsked(true) }}
-              onError={(e) => { setDraftError(e); if (e) setAsked(false) }} />
+            <DraftButton threadId={threadId} hasDraft={draft !== null} drafting={drafting || isDrafting(thread, Date.now())}
+              onBusy={(b) => { setDrafting(b); if (b) setAskedFor(thread?.lastReplyId ?? null) }}
+              onError={(e) => { setDraftError(e); if (e) setAskedFor(null) }} />
           )}
           <button className="btn primary sm" type="submit" disabled={sending || body.trim() === ''}>{sending ? 'Sending…' : 'Send reply'}</button>
         </span>

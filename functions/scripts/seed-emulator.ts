@@ -79,6 +79,8 @@ async function seedEmail() {
   await db.doc('reviews/row-9').set({ status: 'approved', ...review });
   await db.doc('reviews/row-12').set({ status: 'declined', ...review });
   await db.doc('reviews/row-11').set({ status: 'approved', ...review });
+  // Grace's talk, which Alan co-presents: their acceptances below are for it.
+  await db.doc('reviews/row-5').set({ status: 'approved', ...review });
 
   const eventInfo: EmailTemplate = {
     name: 'Event info', rule: 'approved', stageId: null, attachments: [],
@@ -166,8 +168,8 @@ async function seedEmail() {
   });
   const grace = replyFrom('grace@example.com', 'Thank you! What time should I arrive on the day, and is there a speaker dinner?');
   const alan = replyFrom('alan@example.com', 'Unfortunately I can no longer make it to the event, so I need to withdraw my talk.');
-  const reading = (messageId: string, label: ReplyLabel, p: number, rest: Record<ReplyLabel, number>) => ({
-    messageId, label, probabilities: rest, confidence: p, model: 'fake-decision', at: ts(3 * 60 * 60 * 1000 - 60_000), error: null,
+  const reading = (messageId: string, label: ReplyLabel, p: number, rest: Record<ReplyLabel, number>, at = ts(3 * 60 * 60 * 1000 - 60_000)) => ({
+    messageId, label, probabilities: rest, confidence: p, model: 'fake-decision', at, error: null,
   });
   const thread = (speakerKey: string, msgId: string, o: Partial<ThreadDoc>): ThreadDoc => ({
     speakerKey, firstSentAt: ts(2 * DAY), lastCheckedAt: ts(0), seenIds: [msgId], lastReplyAt: null,
@@ -182,11 +184,12 @@ async function seedEmail() {
     seenIds: ['seed-msg-1', 'seed-reply-1'], lastReplyAt: reply.at, lastSnippet: reply.text,
     // Cleared by AI: a thank-you needs no answer.
     lastReplyId: 'seed-reply-1',
-    ai: reading('seed-reply-1', 'no_answer_needed', 0.97, { needs_answer: 0.01, no_answer_needed: 0.97, withdrawing: 0.0, unclear: 0.02 }),
+    ai: reading('seed-reply-1', 'no_answer_needed', 0.97, { needs_answer: 0.01, no_answer_needed: 0.97, withdrawing: 0.0, unclear: 0.02 },
+      ts(DAY - 30_000)),
     settled: { messageId: 'seed-reply-1', by: 'ai', byName: 'AI', at: ts(DAY - 60_000) },
   }));
-  batch.set(db.doc('emails/seed-acceptance-grace'), acceptanceFor('Grace', 'grace@example.com', 3, 'row-11'));
-  batch.set(db.doc('emails/seed-acceptance-alan'), acceptanceFor('Alan', 'alan@example.com', 4, 'row-12'));
+  batch.set(db.doc('emails/seed-acceptance-grace'), acceptanceFor('Grace', 'grace@example.com', 3, 'row-5'));
+  batch.set(db.doc('emails/seed-acceptance-alan'), acceptanceFor('Alan', 'alan@example.com', 4, 'row-5'));
   batch.set(db.doc('threads/seed-thread-3'), thread('grace@example.com', 'seed-msg-3', {
     seenIds: ['seed-msg-3', 'seed-reply-3'], lastReplyAt: grace.at, lastSnippet: grace.text, lastReplyId: 'seed-reply-3',
     ai: reading('seed-reply-3', 'needs_answer', 0.91, { needs_answer: 0.91, no_answer_needed: 0.04, withdrawing: 0.01, unclear: 0.04 }),

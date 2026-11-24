@@ -77,6 +77,12 @@ export function aiNote(thread: ThreadDoc | undefined): { text: string; tone: 'wa
   return { text: `AI: ${AI_WORDS[top]} · ${Math.round(p[top] * 100)}%`, tone: '' }
 }
 
+/** The "May be withdrawing" chip: the AI warns, and the team has not written since that reply (settled or not). */
+export function showsWithdrawWarning(thread: ThreadDoc | undefined): boolean {
+  if (aiNote(thread)?.tone !== 'warn') return false
+  return !((thread?.lastTeamAt?.toMillis() ?? 0) > (thread?.lastReplyAt?.toMillis() ?? 0))
+}
+
 export function needsLook(e: EmailDoc, thread: ThreadDoc | undefined): boolean {
   if (e.bounce || e.state === 'held' || e.state === 'unknown' || e.state === 'failed') return true
   return speakerWroteLast(thread)
@@ -96,6 +102,8 @@ export function latestLine(e: EmailDoc, thread: ThreadDoc | undefined, firstName
   if (thread && reply !== undefined) {
     const team = thread.lastTeamAt?.toMillis() ?? 0
     const snippet = thread.lastSnippet ? ` · ${thread.lastSnippet}` : ''
+    // The team wrote after the newest reply: that says more than how the reply was settled.
+    if (team > reply) return `Answered by the team · ${shortDateTime(team)}${snippet}`
     const settled = currentFor(thread, thread.settled)
     if (settled) return settled.by === 'ai' ? `Cleared by AI${snippet}` : `Marked no reply needed · ${settled.byName}${snippet}`
     return !speakerWroteLast(thread) ? `Answered by the team · ${shortDateTime(team)}${snippet}` : `${firstName} replied · ${shortDateTime(reply)}${snippet}`

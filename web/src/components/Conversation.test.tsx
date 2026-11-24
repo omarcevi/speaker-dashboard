@@ -24,7 +24,7 @@ vi.mock('../data/mailActions.ts', () => ({ draftReply: h.draftReply, queueEmails
 
 const { default: Conversation } = await import('./Conversation.tsx')
 const { AiLine, DraftButton, GapConfirm } = await import('./ReplyAssist.tsx')
-const { firstGap, prefill, sendStep } = await import('../lib/replyAssist.ts')
+const { askedNow, firstGap, isDrafting, prefill, sendStep } = await import('../lib/replyAssist.ts')
 
 const ts = (ms: number) => ({ toMillis: () => ms })
 type Me = { uid: string; name: string; role: 'admin' | 'member' }
@@ -143,8 +143,26 @@ describe('Conversation: draft', () => {
   })
 
   it('shows Drafting… while the server is drafting', () => {
-    const out = render(fakeThread({ drafting: ts(500) }))
+    const out = render(fakeThread({ drafting: ts(Date.now() - 1000) }))
     expect(out).toMatch(/<button[^>]*disabled=""[^>]*>Drafting…<\/button>/)
+  })
+
+  it('treats drafting older than 5 minutes as not drafting', () => {
+    const now = 10 * 60_000
+    expect(isDrafting(fakeThread({ drafting: ts(now - 60_000) }), now)).toBe(true)
+    expect(isDrafting(fakeThread({ drafting: ts(now - 5 * 60_000) }), now)).toBe(false)
+    expect(isDrafting(fakeThread({ drafting: ts(now - 6 * 60_000) }), now)).toBe(false)
+    expect(isDrafting(fakeThread({ drafting: null }), now)).toBe(false)
+    expect(isDrafting(fakeThread(), now)).toBe(false)
+    expect(isDrafting(undefined, now)).toBe(false)
+  })
+
+  it('a Redraft request only counts for the reply it was made for', () => {
+    expect(askedNow('m2', fakeThread())).toBe(true)
+    // A newer reply arrived: its auto-draft must not replace typed text.
+    expect(askedNow('m2', fakeThread({ lastReplyId: 'm3' }))).toBe(false)
+    expect(askedNow(null, fakeThread())).toBe(false)
+    expect(askedNow('m2', undefined)).toBe(false)
   })
 
   it('never overwrites typed text with a new draft', () => {

@@ -398,7 +398,7 @@ async function replyAi(): Promise<ReplyAi> {
 export const assistNewReply = onDocumentCreated(
   {
     document: 'threads/{threadId}/messages/{messageId}', region, serviceAccount: SYNC_SERVICE_ACCOUNT,
-    secrets: [GEMINI_API_KEY], retry: false, timeoutSeconds: 120,
+    secrets: [GEMINI_API_KEY], retry: false, timeoutSeconds: 300, memory: '512MiB',
   },
   async event => {
     if (event.data?.data()?.kind !== 'reply') return;

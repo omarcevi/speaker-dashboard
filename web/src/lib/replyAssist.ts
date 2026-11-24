@@ -41,3 +41,16 @@ export function prefill(body: string, seen: Seen | null, draft: ReplyDraft | nul
   const untouched = asked || body.trim() === '' || (seen !== null && body === seen.text)
   return { body: untouched ? draft.text : body, seen: next }
 }
+
+/** A `drafting` mark older than this is left over from a run that never cleared it. */
+export const DRAFTING_STALE_MS = 5 * 60_000
+
+/** The server is drafting for this thread now; a mark older than 5 minutes no longer counts. */
+export const isDrafting = (thread: ThreadDoc | undefined, now: number): boolean => {
+  const at = thread?.drafting?.toMillis()
+  return at !== undefined && now - at < DRAFTING_STALE_MS
+}
+
+/** A Draft a reply / Redraft request (made for reply `askedFor`) still stands only while that reply is the newest. */
+export const askedNow = (askedFor: string | null, thread: ThreadDoc | undefined): boolean =>
+  askedFor !== null && askedFor === thread?.lastReplyId

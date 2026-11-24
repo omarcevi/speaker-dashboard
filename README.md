@@ -17,7 +17,7 @@ Everything runs against the Firebase emulators under the fake project `demo-cfp`
 npm install && npm install --prefix functions && npm install --prefix web
 ```
 
-Create two local env files. Git ignores both.
+Create three local files. Git ignores all of them.
 
 - `functions/.env.local`:
   ```
@@ -27,6 +27,10 @@ Create two local env files. Git ignores both.
   ```
   `SHEET_ID=fake` makes Refresh read the built-in fake sheet instead of Google Sheets.
   The emulator never sends real email: it uses an in-memory fake Gmail, and `MAIL_SENDER` defaults to `speakers@example.org`.
+- `functions/.secret.local` (git ignores it too), so the functions emulator never asks Secret Manager for the Gemini key:
+  ```
+  GEMINI_API_KEY=unused-in-emulator
+  ```
 - `web/.env.local`:
   ```
   VITE_FIREBASE_API_KEY=dummy
@@ -168,7 +172,7 @@ Locally, the emulator also has two admin-only callables for testing: `devInjectM
 
 ## Reply assistant
 
-The reply assistant helps the team with speaker replies in **Emails**. Each new reply is read with the Gemini Decisions API (`gemini-decision-1`). A reply that very clearly needs no answer (a thank-you, say) goes to **Cleared by AI**, where anyone can press **Undo**. A reply that may be a withdrawal gets a warning. For replies that need an answer, the assistant drafts one with Gemini on Vertex AI (EU), using the **Speaker facts** and fields under **Event settings**, the templates, the speaker's talk and their own conversation. Nothing is ever sent automatically: an admin reviews and sends every draft.
+The reply assistant helps the team with speaker replies in **Emails**. Each new reply is read with the Gemini Decisions API (`gemini-decision-1`). A reply that very clearly needs no answer (a thank-you, say) goes to **Cleared by AI**, where an admin can press **Undo**. A reply is never cleared while the speaker has an earlier reply the team hasn't answered, so a later "thanks" can't hide a question or a withdrawal. A reply that may be a withdrawal gets a warning. For replies that need an answer, the assistant drafts one with Gemini on Vertex AI (EU), using the **Speaker facts** and fields under **Event settings**, the templates, the speaker's talk and their own conversation. Nothing is ever sent automatically: an admin reviews and sends every draft.
 
 **Setup.** The reading needs an API key from an AI Studio project with billing turned on, so the text is not used for training:
 
@@ -177,6 +181,19 @@ npx firebase functions:secrets:set GEMINI_API_KEY --project speaker-dashboard-9c
 ```
 
 Deploying grants the functions' service account access to the secret. Drafts use Vertex AI and need no extra key.
+
+The reading runs as a Firestore trigger under the sync service account (`cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com`), which needs to receive the trigger's events and to invoke the function:
+
+```bash
+gcloud projects add-iam-policy-binding speaker-dashboard-9c149 \
+  --member=serviceAccount:cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com \
+  --role=roles/eventarc.eventReceiver
+gcloud projects add-iam-policy-binding speaker-dashboard-9c149 \
+  --member=serviceAccount:cfp-sync@speaker-dashboard-9c149.iam.gserviceaccount.com \
+  --role=roles/run.invoker
+```
+
+After the deploy, check the logs for a `Reply assist:` line when the first real reply comes in. No such line means the trigger did not run.
 
 **Cut-offs.** They are in `functions/src/shared/replyAi.ts`: a reply is cleared when "no answer needed" is at least 0.95 and "withdrawing" is under 0.10, and it is flagged as a possible withdrawal from 0.30.
 

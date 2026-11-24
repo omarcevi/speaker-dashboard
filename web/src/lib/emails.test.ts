@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailDoc, ThreadDoc } from '../../../functions/src/model.ts'
 import {
-  aiNote, ago, bounceSummary, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
+  aiNote, ago, bounceSummary, showsWithdrawWarning, displayFileName, displayName, emptyEventFillIns, unknownFillIns, emailsBySpeaker, eventKeyOf, formatBytes, isListed, lastActivity, lastDecisionEmail, latestLine, linkParts, needsLook,
   previewSegments, safeFileName, speakerWroteLast, stateLabel, stateTone, toIstanbulMs,
   emailTitle, historyChipLabel, usesSignatureLayout, historyByLine, speakerHistory, emailedLine, istanbulTime,
 } from './emails.ts'
@@ -333,5 +333,20 @@ describe('settled replies', () => {
     expect(aiNote(replied({ ai: reading(probs({ needs_answer: 0.876, withdrawing: 0.1, unclear: 0.024 })) }))).toEqual({ text: 'AI: needs an answer · 88%', tone: '' })
     expect(aiNote(replied({ ai: reading(probs({ no_answer_needed: 0.9, withdrawing: 0.1 })) }))).toEqual({ text: 'AI: no reply needed · 90%', tone: '' })
     expect(aiNote(replied({ ai: reading(probs({ unclear: 0.6, needs_answer: 0.4 })) }))).toEqual({ text: 'AI: unclear · 60%', tone: '' })
+  })
+  it('latestLine prefers the team answer when the team wrote after a settled reply', () => {
+    const answered = { lastTeamAt: ts(TEAM), lastReplyAt: ts(REPLY) }
+    expect(latestLine(email(), replied({ ...answered, settled: settled('ai') }), 'Priya')).toBe('Answered by the team · 19 Nov, 11:30 · Thanks!')
+    expect(latestLine(email(), replied({ ...answered, settled: settled('u1') }), 'Priya')).toBe('Answered by the team · 19 Nov, 11:30 · Thanks!')
+  })
+  it('shows the withdrawing warning only while the reply is unanswered by the team', () => {
+    const warn = reading(probs({ needs_answer: 0.5, withdrawing: 0.4, unclear: 0.1 }))
+    expect(showsWithdrawWarning(replied({ ai: warn }))).toBe(true)
+    // Settled but the team has not written since: still shown.
+    expect(showsWithdrawWarning(replied({ ai: warn, settled: settled('u1') }))).toBe(true)
+    // The team wrote after the reply: hidden.
+    expect(showsWithdrawWarning(replied({ ai: warn, lastTeamAt: ts(TEAM) }))).toBe(false)
+    expect(showsWithdrawWarning(replied({ ai: reading(probs({ needs_answer: 1 })) }))).toBe(false)
+    expect(showsWithdrawWarning(undefined)).toBe(false)
   })
 })

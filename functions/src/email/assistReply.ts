@@ -188,7 +188,12 @@ export async function draftReply(db: Firestore, ai: ReplyAi, p: { threadId: stri
     if (!wrote) await ref.update({ drafting: null })
     console.log(`Reply draft: ${wrote ? 'drafted' : 'stale'} thread=${p.threadId}`)
   } catch (e) {
-    await ref.update({ drafting: null })
+    // Best effort: a failed cleanup must not hide the draft's own error (the web ignores an old `drafting` anyway).
+    try {
+      await ref.update({ drafting: null })
+    } catch (cleanup) {
+      console.error(`Reply draft: could not clear drafting thread=${p.threadId} (${replyErrorCode(cleanup)})`)
+    }
     throw e
   }
   return { ok: true }
