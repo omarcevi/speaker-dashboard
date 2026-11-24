@@ -27,7 +27,7 @@ export function replyErrorCode(e: unknown): string {
   const status = (e as { status?: unknown } | null)?.status
   if (typeof status === 'number' && status >= 100 && status < 600) return `http ${status}`
   const code = (e as { code?: unknown } | null)?.code
-  if (typeof code === 'number' || (typeof code === 'string' && /^[\w -]{1,60}$/.test(code))) return `code ${code}`
+  if (typeof code === 'number' || (typeof code === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(code))) return `code ${code}`
   if (e instanceof Error && e.name === 'TimeoutError') return 'timeout'
   return 'unknown'
 }

@@ -297,5 +297,6 @@ describe('replyErrorCode', () => {
     expect(replyErrorCode(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe('code ECONNRESET')
     expect(replyErrorCode(Object.assign(new Error('x'), { code: 'Speaker said: <b>hi</b>' }))).toBe('unknown')
     expect(replyErrorCode(new Error('Speaker wrote: can I bring my laptop'))).toBe('unknown')
+    expect(replyErrorCode(Object.assign(new Error('x'), { code: 'Can I bring my laptop' }))).toBe('unknown')
   })
 })
