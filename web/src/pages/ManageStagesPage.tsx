@@ -31,7 +31,7 @@ export default function ManageStagesPage() {
   }
 
   const save = async () => {
-    const problem = stagesProblem(list)
+    const problem = stagesProblem(list, templates)
     if (problem) { setError(problem); setSaved(false); return }
     setSaving(true)
     setError(null)

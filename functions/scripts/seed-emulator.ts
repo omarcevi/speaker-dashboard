@@ -86,6 +86,13 @@ async function seedEmail() {
     updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
   };
   await db.doc('templates/event-info').set(eventInfo);
+  const visaLetter: EmailTemplate = {
+    name: 'Visa letter', rule: 'approved', stageId: null, attachments: [],
+    subject: 'Your visa invitation letter for {{eventName}}',
+    body: 'Hi {{firstName}},\n\nWe are preparing your visa invitation letter for {{eventName}} on {{eventDate}}.\n\nThe {{eventName}} team',
+    updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
+  };
+  await db.doc('templates/visa-letter').set(visaLetter);
 
   // Stages: Acceptance is already due (Tim replied, Donald is missing it), Event info is not due yet.
   const istanbulDate = (offsetMs: number) =>
@@ -94,7 +101,7 @@ async function seedEmail() {
     stages: [
       { id: 'acceptance', name: 'Acceptance', templateIds: ['acceptance'], dueFrom: istanbulDate(-3 * DAY), appliesTo: 'everyone' },
       { id: 'event-info', name: 'Event info', templateIds: ['event-info'], dueFrom: istanbulDate(7 * DAY), appliesTo: 'everyone' },
-      { id: 'visa-letter', name: 'Visa letter', templateIds: ['event-info'], dueFrom: null, appliesTo: 'added' },
+      { id: 'visa-letter', name: 'Visa letter', templateIds: ['visa-letter'], dueFrom: null, appliesTo: 'added' },
     ],
     updatedAt: ts(3 * DAY), updatedBy: 'admin-uid', updatedByName: 'Admin User',
   };

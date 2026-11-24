@@ -264,7 +264,15 @@ describe('manage stages helpers', () => {
     expect(stagesProblem([{ ...pres, name: '  ' }])).toBe('Every stage needs a name')
     expect(stagesProblem([{ ...pres, templateIds: [] }])).toBe('Pick a template for Presentation request')
     expect(stagesProblem([pres])).toBeNull()
-    expect(stagesProblem(Array.from({ length: 31 }, (_, i) => ({ ...pres, id: `s${i}` })))).toBe('At most 30 stages')
+    const many = Array.from({ length: 31 }, (_, i) => ({ ...pres, id: `s${i}`, templateIds: [`t${i}`] }))
+    expect(stagesProblem(many)).toBe('At most 30 stages')
+  })
+  it('stagesProblemRefusesSharedTemplate', () => {
+    const templates = [{ id: 'pres1', name: 'Event info' }]
+    const other: Stage = { ...pres, id: 'visa', name: 'Visa letter', templateIds: ['visa', 'pres1'] }
+    expect(stagesProblem([pres, other], templates)).toBe('“Event info” is used by two stages')
+    expect(stagesProblem([pres, { ...other, templateIds: ['pres2'] }], [])).toBe('“pres2” is used by two stages') // deleted template
+    expect(stagesProblem([pres, { ...other, templateIds: ['visa'] }], templates)).toBeNull()
   })
   it('newStage starts blank on one template', () => {
     expect(newStage('x', 't1')).toEqual({ id: 'x', name: '', templateIds: ['t1'], dueFrom: null, appliesTo: 'everyone' })

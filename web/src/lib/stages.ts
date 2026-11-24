@@ -203,11 +203,18 @@ export function withTemplate(s: Stage, templateId: string, saved: readonly Stage
 
 export const newStage = (id: string, templateId: string): Stage => ({ id, name: '', templateIds: [templateId], dueFrom: null, appliesTo: 'everyone' })
 
-/** Why `stages` can't be saved, or null. A stage whose current template was deleted may still be saved. */
-export function stagesProblem(stages: Stage[]): string | null {
+/** Why `stages` can't be saved, or null. A stage whose current template was deleted may still be saved. A template
+ *  (current or past) may belong to one stage only, or its sends would tick both. `templates` names them. */
+export function stagesProblem(stages: Stage[], templates: readonly { id: string; name: string }[] = []): string | null {
+  const owner = new Map<string, string>()
   for (const s of stages) {
     if (s.name.trim() === '') return 'Every stage needs a name'
     if (s.templateIds.length === 0) return `Pick a template for ${s.name}`
+    for (const t of s.templateIds) {
+      const was = owner.get(t)
+      if (was !== undefined && was !== s.id) return `“${templates.find((x) => x.id === t)?.name ?? t}” is used by two stages`
+      owner.set(t, s.id)
+    }
   }
   return stages.length > MAX_STAGES ? `At most ${MAX_STAGES} stages` : null
 }
