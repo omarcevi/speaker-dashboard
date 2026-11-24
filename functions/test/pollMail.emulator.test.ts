@@ -120,6 +120,48 @@ describe('pollMail', () => {
     expect((await threadDoc('th-1')).lastCheckedAt!.toMillis()).toBe(T0 + 3 * HOUR)
   })
 
+  describe('lastReplyId', () => {
+    const reply = (id: string, at: number) => textMessage(id, 'th-1', { from: ADA, text: `Reply ${id}`, at })
+
+    it('records the newest reply and keeps it across team messages and older replies', async () => {
+      gmail.addReply('th-1', reply('g-r1', T0 + HOUR))
+      await poll(T0 + 2 * HOUR)
+      expect((await threadDoc('th-1')).lastReplyId).toBe('g-r1')
+
+      gmail.addReply('th-1', textMessage('g-team-1', 'th-1', { from: SENDER, text: 'Team note', at: T0 + 3 * HOUR, sent: true }))
+      await poll(T0 + 4 * HOUR)
+      expect((await threadDoc('th-1')).lastReplyId).toBe('g-r1')
+
+      gmail.addReply('th-1', reply('g-r0', T0 + 30 * MIN))
+      await poll(T0 + 5 * HOUR)
+      expect((await threadDoc('th-1')).lastReplyId).toBe('g-r1')
+    })
+
+    it('takes the newer of two replies found in one poll', async () => {
+      gmail.addReply('th-1', reply('g-ra', T0 + HOUR))
+      gmail.addReply('th-1', reply('g-rb', T0 + 2 * HOUR))
+      await poll(T0 + 3 * HOUR)
+      expect((await threadDoc('th-1')).lastReplyId).toBe('g-rb')
+    })
+
+    it('fills it in for an old thread with no new messages', async () => {
+      await db.doc('threads/th-1').update({ lastReplyAt: Timestamp.fromMillis(T0 + 2 * HOUR) })
+      const col = db.collection('threads/th-1/messages')
+      const base = { from: ADA, to: [SENDER], cc: [], subject: 'Re', text: 'x', quoted: '', attachments: [] }
+      await col.doc('g-old-r').set({ ...base, kind: 'reply', at: Timestamp.fromMillis(T0 + 2 * HOUR) })
+      await col.doc('g-old-team').set({ ...base, kind: 'team', at: Timestamp.fromMillis(T0 + 3 * HOUR) })
+      await col.doc('g-old-r0').set({ ...base, kind: 'reply', at: Timestamp.fromMillis(T0 + HOUR) })
+      expect(await poll(T0 + 4 * HOUR)).toEqual({ threads: 1, replies: 0, bounces: 0 })
+      expect((await threadDoc('th-1')).lastReplyId).toBe('g-old-r')
+    })
+
+    it('leaves it unset when an old thread has no stored reply', async () => {
+      await db.doc('threads/th-1').update({ lastReplyAt: Timestamp.fromMillis(T0 + HOUR) })
+      await poll(T0 + 2 * HOUR)
+      expect((await threadDoc('th-1')).lastReplyId).toBeUndefined()
+    })
+  })
+
   it('bounce flags the email', async () => {
     // A second email later in the same thread: the bounce belongs to the one sent before it.
     await sentEmail('e2', 'th-1', 'g-sent-2', T0 + 2 * HOUR)
