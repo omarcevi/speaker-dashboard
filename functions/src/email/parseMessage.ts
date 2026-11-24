@@ -184,10 +184,18 @@ function bounceReason(status: string | null, text: string): string {
   return [...text].slice(0, BOUNCE_REASON_MAX).join('')
 }
 
-/** `sender` is the dashboard mailbox; kept for the interface, classification relies on the SENT label (Ruling 6). */
-export function parseMessage(m: GmailMessage, _sender: string): ParsedMessage {
+/**
+ * `sender` is the From address the dashboard sends as (it may be a Google Group). Classification relies on
+ * the SENT label (Ruling 6); `sender` is only used to show who wrote a reply the group relayed: a group
+ * that rewrites From to its own address keeps the speaker in Reply-To or X-Original-Sender.
+ */
+export function parseMessage(m: GmailMessage, sender: string): ParsedMessage {
   const payload: Part = m.payload ?? {}
-  const from = addresses(headerOf(payload, 'From'))[0] ?? ''
+  const headerFrom = addresses(headerOf(payload, 'From'))[0] ?? ''
+  const relayed = !m.labelIds?.includes('SENT') && headerFrom === sender.trim().toLowerCase()
+  const from = relayed
+    ? addresses(headerOf(payload, 'Reply-To'))[0] || addresses(headerOf(payload, 'X-Original-Sender'))[0] || headerFrom
+    : headerFrom
   const walked = walk(payload, { plain: null, html: null, status: null, attachments: [] })
 
   const plainSplit = walked.plain !== null ? splitQuoted(walked.plain) : null
@@ -198,7 +206,7 @@ export function parseMessage(m: GmailMessage, _sender: string): ParsedMessage {
 
   const contentType = headerOf(payload, 'Content-Type')
   const isReport = mime(payload) === 'multipart/report' && param(contentType, 'report-type').toLowerCase() === 'delivery-status'
-  const daemon = /^(mailer-daemon|postmaster)@/.test(from)
+  const daemon = /^(mailer-daemon|postmaster)@/.test(headerFrom)
   const hasStatus = hasPart(payload, ['message/delivery-status', 'message/global-delivery-status'])
   // Ruling 6: From can be forged, so only Gmail's SENT label makes a team message, and a bounce
   // needs both the daemon sender and a delivery-status report.

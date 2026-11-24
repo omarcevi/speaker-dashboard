@@ -56,7 +56,7 @@ describe('delegatedGmail', () => {
     })
     let t = 1_000_000
     const g = delegatedGmail(
-      { serviceAccount: 'sa@p.iam.gserviceaccount.com', sender: 'me@example.com' },
+      { serviceAccount: 'sa@p.iam.gserviceaccount.com', user: 'me@example.com' },
       { authRequest, fetch: fetchFn as unknown as typeof fetch, now: () => t },
     )
     return { g, authRequest, fetchFn, advance: (ms: number) => { t += ms } }
@@ -109,7 +109,7 @@ describe('delegatedGmail', () => {
       String(url).includes('oauth2')
         ? new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
         : new Response('to: secret@example.com', { status: 403 }))
-    const g = delegatedGmail({ serviceAccount: 's', sender: 'x@example.com' }, { authRequest, fetch: fetchFn as unknown as typeof fetch })
+    const g = delegatedGmail({ serviceAccount: 's', user: 'x@example.com' }, { authRequest, fetch: fetchFn as unknown as typeof fetch })
     await expect(g.send(raw)).rejects.toThrow(/403/)
     await expect(g.send(raw)).rejects.not.toThrow(/secret@/)
   })
@@ -117,7 +117,7 @@ describe('delegatedGmail', () => {
   it('auth failures, including a signJwt network error, start with "Gmail auth" (nothing reached Gmail)', async () => {
     const authRequest = vi.fn(async () => { throw new Error('socket hang up') })
     const fetchFn = vi.fn(async () => new Response('{}'))
-    const g = delegatedGmail({ serviceAccount: 's', sender: 'x@example.com' }, { authRequest, fetch: fetchFn as unknown as typeof fetch })
+    const g = delegatedGmail({ serviceAccount: 's', user: 'x@example.com' }, { authRequest, fetch: fetchFn as unknown as typeof fetch })
     await expect(g.send(raw)).rejects.toThrow(/^Gmail auth failed$/)
     expect(fetchFn).not.toHaveBeenCalled()
   })

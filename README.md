@@ -118,7 +118,12 @@ You do these steps once, in the Firebase and Google Cloud consoles.
 
 ## Email setup
 
-Emails go out from a real Workspace mailbox (for example the team's speakers address), through the `cfp-sync` service account with domain-wide delegation. No key file is needed. The owner does these steps once:
+Emails go out through a real Workspace mailbox, using the `cfp-sync` service account with domain-wide delegation. No key file is needed. Two settings decide the addresses:
+
+- `MAIL_USER`: the real Workspace user the dashboard signs in to. It sends from this mailbox and reads replies and bounces there.
+- `MAIL_SENDER`: the From address speakers see. It's either the same address, or a Google Group that `MAIL_USER` belongs to and has added under Gmail **Settings → Accounts → Send mail as**. Without that alias, Gmail replaces the From address with `MAIL_USER`. If it's a group, remove any subject prefix in the group's **Email options**, because a prefix stops replies from joining their conversation in the dashboard.
+
+The owner does these steps once:
 
 1. **Enable the APIs:** the **Gmail API** and the **IAM Service Account Credentials API**.
    ```bash
@@ -138,9 +143,10 @@ Emails go out from a real Workspace mailbox (for example the team's speakers add
    ```
    https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.readonly
    ```
-4. **Set `MAIL_SENDER`.** Add the mailbox address to `functions/.env`:
+4. **Set the addresses** in `functions/.env`:
    ```
-   MAIL_SENDER=<the speaker mailbox, a user in your Workspace>
+   MAIL_USER=<the Workspace user the dashboard signs in to>
+   MAIL_SENDER=<the From address: the same user, or a group it can send as>
    ```
 5. **Deploy functions and rules** when ready:
    ```bash

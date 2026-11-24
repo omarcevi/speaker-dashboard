@@ -1,4 +1,4 @@
-// Gmail access for the speaker mailbox via domain-wide delegation: the runtime service account signs a
+// Gmail access for the dashboard mailbox (MAIL_USER) via domain-wide delegation: the runtime service account signs a
 // JWT through IAM Credentials (no key file), trades it for a user token, and calls the Gmail REST API.
 // Server-only. Errors carry HTTP status text only, never addresses or message bodies.
 import { GoogleAuth } from 'google-auth-library'
@@ -22,7 +22,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
 const REFRESH_MARGIN_MS = 5 * 60 * 1000
 
-export function delegatedGmail(opts: { serviceAccount: string; sender: string }, deps: DelegatedGmailDeps = {}): GmailClient {
+export function delegatedGmail(opts: { serviceAccount: string; user: string }, deps: DelegatedGmailDeps = {}): GmailClient {
   const doFetch = deps.fetch ?? fetch
   const now = deps.now ?? Date.now
   let auth: GoogleAuth | undefined
@@ -38,7 +38,7 @@ export function delegatedGmail(opts: { serviceAccount: string; sender: string },
   async function token(): Promise<string> {
     if (cached && now() < cached.expiresAt - REFRESH_MARGIN_MS) return cached.token
     const iat = Math.floor(now() / 1000)
-    const claims = { iss: opts.serviceAccount, sub: opts.sender, scope: SCOPES, aud: TOKEN_URL, iat, exp: iat + 3600 }
+    const claims = { iss: opts.serviceAccount, sub: opts.user, scope: SCOPES, aud: TOKEN_URL, iat, exp: iat + 3600 }
     const signed = await authRequest({
       url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${opts.serviceAccount}:signJwt`,
       method: 'POST',

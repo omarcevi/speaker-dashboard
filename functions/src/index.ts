@@ -34,7 +34,10 @@ const SHEET_ID = defineString('SHEET_ID');
 const SHEET_TAB = defineString('SHEET_TAB', { default: 'Form Responses 1' });
 const SYNC_SERVICE_ACCOUNT = defineString('SYNC_SERVICE_ACCOUNT');
 const isEmulator = () => process.env.FUNCTIONS_EMULATOR === 'true';
-// The speaker mailbox. Required on deploy; the emulator falls back to a made-up address (its Gmail is the fake).
+// MAIL_USER is the real Workspace mailbox the dashboard signs in to (sends from, reads replies in).
+// MAIL_SENDER is the From address speakers see: the same mailbox, or a group that MAIL_USER belongs to
+// and has under Gmail's "Send mail as". Required on deploy; the emulator uses made-up addresses (its Gmail is the fake).
+const MAIL_USER = defineString('MAIL_USER', isEmulator() ? { default: 'organizer@example.org' } : {});
 const MAIL_SENDER = defineString('MAIL_SENDER', isEmulator() ? { default: 'speakers@example.org' } : {});
 
 const region = 'europe-west1';
@@ -159,12 +162,12 @@ function emulatorGmail(): GmailClient {
   };
 }
 
-/** The speaker mailbox. */
+/** The dashboard mailbox (MAIL_USER). */
 let realGmail: GmailClient | undefined;
 function gmailClient(): GmailClient {
   if (isEmulator()) return emulatorGmail();
   // Kept per instance so its access token is reused across runs.
-  return realGmail ??= delegatedGmail({ serviceAccount: SYNC_SERVICE_ACCOUNT.value(), sender: MAIL_SENDER.value() });
+  return realGmail ??= delegatedGmail({ serviceAccount: SYNC_SERVICE_ACCOUNT.value(), user: MAIL_USER.value() });
 }
 
 const readAttachment = async (path: string) => (await getStorage().bucket().file(path).download())[0];

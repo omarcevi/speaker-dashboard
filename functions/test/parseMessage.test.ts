@@ -178,6 +178,26 @@ describe('parseMessage', () => {
     expect(forged.from).toBe('team@example.com')
   })
 
+  it('groupRelayedReplyShowsOriginalSender', () => {
+    // A Google Group that rewrites From (DMARC) keeps the speaker in Reply-To.
+    const viaGroup = parseMessage(msg(leaf('text/plain', 'Thanks!'), {
+      From: "'Ada Lovelace' via Speakers <Team@Example.com>", 'Reply-To': 'Ada Lovelace <Ada@Example.com>',
+    }), SENDER)
+    expect(viaGroup.kind).toBe('reply')
+    expect(viaGroup.from).toBe('ada@example.com')
+    const original = parseMessage(msg(leaf('text/plain', 'Thanks!'), {
+      From: "'Ada' via Speakers <team@example.com>", 'X-Original-Sender': 'ada@example.com',
+    }), SENDER)
+    expect(original.from).toBe('ada@example.com')
+  })
+
+  it('replyToIgnoredWhenFromIsNotTheGroup', () => {
+    const r = parseMessage(msg(leaf('text/plain', 'Hi'), { 'Reply-To': 'someone@else.com' }), SENDER)
+    expect(r.from).toBe('ada@example.com')
+    const team = parseMessage(msg(leaf('text/plain', 'Hi'), { From: 'team@example.com', 'Reply-To': 'x@y.com' }, ['SENT']), SENDER)
+    expect(team.from).toBe('team@example.com')
+  })
+
   it('encodedLastFirstNamesDoNotSplit', () => {
     const enc = (s: string) => '=?UTF-8?B?' + Buffer.from(s).toString('base64') + '?='
     const r = parseMessage(msg(leaf('text/plain', 'Hi'), {
