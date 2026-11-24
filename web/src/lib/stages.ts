@@ -16,6 +16,9 @@ export const SENT_KINDS: ReadonlySet<CellKind> = new Set<CellKind>(['sent', 'man
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 const isoDay = /^\d{4}-\d{2}-\d{2}$/
+/** A real calendar day as YYYY-MM-DD: the format, and a round trip through Date (so no 30 February). */
+const isDay = (v: unknown): v is string => typeof v === 'string' && isoDay.test(v)
+  && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 
 /** Stages from the `meta/stages` document data. Rules don't check element shapes, so every field is checked here. */
@@ -24,11 +27,12 @@ export function readStages(raw: unknown): Stage[] {
   const out: Stage[] = []
   for (const s of stages) {
     if (!isRecord(s) || typeof s.id !== 'string' || s.id === '' || typeof s.name !== 'string') continue
+    if (out.some((x) => x.id === s.id)) continue // a repeated id: the first one wins
     out.push({
       id: s.id,
       name: s.name,
       templateIds: list(s.templateIds),
-      dueFrom: typeof s.dueFrom === 'string' && isoDay.test(s.dueFrom) ? s.dueFrom : null,
+      dueFrom: isDay(s.dueFrom) ? s.dueFrom : null,
       appliesTo: s.appliesTo === 'added' ? 'added' : 'everyone',
     })
   }

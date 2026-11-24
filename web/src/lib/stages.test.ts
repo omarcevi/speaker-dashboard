@@ -229,6 +229,18 @@ describe('loading stages', () => {
     expect(readStages({ stages: [{ id: 's', name: 'A', templateIds: ['t', 3], dueFrom: '2026-12-01', appliesTo: 'added' }] }))
       .toEqual([{ id: 's', name: 'A', templateIds: ['t'], dueFrom: '2026-12-01', appliesTo: 'added' }])
   })
+  it('readStagesKeepsFirstOfDuplicateIds', () => {
+    expect(readStages({ stages: [{ id: 's', name: 'A' }, { id: 's', name: 'B' }, { id: 't', name: 'C' }] }).map((x) => x.name)).toEqual(['A', 'C'])
+  })
+  it('readStagesDropsImpossibleDates', () => {
+    const due = (dueFrom: string) => readStages({ stages: [{ id: 's', name: 'A', dueFrom }] })[0].dueFrom
+    expect(due('2026-02-30')).toBeNull()
+    expect(due('2026-13-01')).toBeNull()
+    expect(due('2026-00-10')).toBeNull()
+    expect(due('2027-02-29')).toBeNull()
+    expect(due('2028-02-29')).toBe('2028-02-29')
+    expect(due('2026-12-31')).toBe('2026-12-31')
+  })
   it('readExceptions drops non-strings and non-lists', () => {
     expect(readExceptions({ skipped: ['a', 3], added: 'b' })).toEqual({ skipped: ['a'], added: [] })
     expect(readExceptions(null)).toEqual({ skipped: [], added: [] })
