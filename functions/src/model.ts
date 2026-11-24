@@ -86,7 +86,7 @@ export interface EmailTemplate {
   updatedAt: Ts; updatedBy: string; updatedByName: string;
 } // templates/{id}
 export interface EventField { key: string; label: string; value: string }
-export interface EventSettings { fields: EventField[]; signatureHtml?: string; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/event
+export interface EventSettings { fields: EventField[]; signatureHtml?: string; speakerFacts?: string; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/event
 export type StageAppliesTo = 'everyone' | 'added'
 export interface Stage { id: string; name: string; templateIds: string[]; dueFrom: string | null; appliesTo: StageAppliesTo }
 export interface StagesDoc { stages: Stage[]; updatedAt: Ts; updatedBy: string; updatedByName: string } // meta/stages
@@ -108,7 +108,16 @@ export interface EmailDoc {
 export interface ThreadDoc {
   speakerKey: string; firstSentAt: Ts; lastCheckedAt: Ts | null; seenIds: string[]; lastReplyAt: Ts | null;
   lastTeamAt: Ts | null; lastSnippet: string;
+  /** AI reply assistant: id of the newest reply; ai, draft and settled apply only when their messageId matches it. */
+  lastReplyId?: string; ai?: ReplyReading; draft?: ReplyDraft; settled?: ReplySettled | null; drafting?: Ts | null;
 }
+export type ReplyLabel = 'needs_answer' | 'no_answer_needed' | 'withdrawing' | 'unclear'
+export interface ReplyReading {
+  messageId: string; label: ReplyLabel | null; probabilities: Record<ReplyLabel, number> | null; confidence: number | null;
+  model: string; at: Ts; error: string | null;
+}
+export interface ReplyDraft { messageId: string; text: string; model: string; at: Ts }
+export interface ReplySettled { messageId: string; by: string /* 'ai' or uid */; byName: string; at: Ts }
 // threads/{threadId}/messages/{gmailId}
 export interface ReceivedMessage {
   kind: 'reply' | 'bounce' | 'team'; from: string; to: string[]; cc: string[]; at: Ts; subject: string; text: string; quoted: string;
