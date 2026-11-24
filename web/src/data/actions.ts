@@ -57,7 +57,7 @@ export async function setRole(uid: string, role: Role): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { role })
 }
 
-export type TemplateInput = Pick<EmailTemplate, 'name' | 'subject' | 'body' | 'attachments'> & { rule: RecipientRule }
+export type TemplateInput = Pick<EmailTemplate, 'name' | 'subject' | 'body' | 'attachments'> & { rule: RecipientRule; html: string | null }
 
 // Creates with an auto id when `id` is null; returns the id. Templates are not tied to a stage yet.
 export async function saveTemplate(id: string | null, t: TemplateInput, me: Actor): Promise<string> {
@@ -66,6 +66,7 @@ export async function saveTemplate(id: string | null, t: TemplateInput, me: Acto
     name: t.name,
     subject: t.subject,
     body: t.body,
+    html: t.html,
     attachments: t.attachments,
     rule: t.rule,
     stageId: null,
@@ -91,6 +92,6 @@ export async function uploadTemplateAttachment(templateId: string, file: File): 
   return { path, name, size: file.size, contentType: file.type || 'application/octet-stream' }
 }
 
-export async function saveEvent(fields: EventField[], me: Actor): Promise<void> {
-  await setDoc(doc(db, 'meta', 'event'), { fields, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
+export async function saveEvent(fields: EventField[], signatureHtml: string, me: Actor): Promise<void> {
+  await setDoc(doc(db, 'meta', 'event'), { fields, signatureHtml, updatedAt: serverTimestamp(), updatedBy: me.uid, updatedByName: me.name })
 }

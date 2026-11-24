@@ -38,7 +38,7 @@ function Actions({ t }: { t: Template }) {
     }
   }
   const duplicate = () => run('duplicate', () => saveTemplate(null, {
-    name: `${t.name} (copy)`, subject: t.subject, body: t.body, attachments: t.attachments, rule: t.rule,
+    name: `${t.name} (copy)`, subject: t.subject, body: t.body, html: t.html ?? null, attachments: t.attachments, rule: t.rule,
   }, { uid: me!.uid, name: me!.name }))
 
   return (

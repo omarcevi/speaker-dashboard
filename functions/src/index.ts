@@ -198,8 +198,9 @@ function custom(v: unknown): { subject: string; body: string; html?: string } | 
   if (!isObject(v) || typeof v.subject !== 'string' || typeof v.body !== 'string' || v.subject.length > 1_000 || v.body.length > 100_000) {
     throw bad('custom must be null or { subject, body } strings.');
   }
-  if (v.html !== undefined && (typeof v.html !== 'string' || v.html.length > 200_000)) throw bad('custom.html must be a string.');
-  return v.html === undefined ? { subject: v.subject, body: v.body } : { subject: v.subject, body: v.body, html: v.html };
+  // A null html is the same as none.
+  if (v.html != null && (typeof v.html !== 'string' || v.html.length > 200_000)) throw bad('custom.html must be a string.');
+  return v.html == null ? { subject: v.subject, body: v.body } : { subject: v.subject, body: v.body, html: v.html };
 }
 
 function speakerKeys(v: unknown): string[] {

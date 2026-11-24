@@ -129,35 +129,50 @@ describe('prepare', () => {
 
   it('renders a recipient who can get it', () => {
     const p = prepare('acceptance', { subject: 'Hi {{firstName}}', body: 'See you at {{venue}}' }, ada, judge(), fields,
-      { templateId: 'acc', followUp: false })
+      { templateId: 'acc', followUp: false, signatureHtml: '' })
     expect(canSend(p)).toBe(true)
     expect(p.cc).toEqual(['cy@example.com'])
     expect(p.values.venue).toBe('Hall A')
   })
 
   it('blocks a recipient with an empty or unknown fill-in', () => {
-    const p = prepare('acceptance', { subject: 'Hi', body: '{{deadline}} {{nope}}' }, ada, judge(), fields, { templateId: 'acc', followUp: false })
+    const p = prepare('acceptance', { subject: 'Hi', body: '{{deadline}} {{nope}}' }, ada, judge(), fields, { templateId: 'acc', followUp: false, signatureHtml: '' })
     expect(canSend(p)).toBe(false)
     expect(blockedReason(p)).toBe("{{deadline}} is empty, {{nope}} isn't a known fill-in")
+    expect(p.html).toBe('<p>{{deadline}} {{nope}}</p>')
   })
 
   it('blocks a recipient on a malformed fill-in', () => {
-    const p = prepare('acceptance', { subject: 'Hi {{first name}}', body: 'x' }, ada, judge(), fields, { templateId: 'acc', followUp: false })
+    const p = prepare('acceptance', { subject: 'Hi {{first name}}', body: 'x' }, ada, judge(), fields, { templateId: 'acc', followUp: false, signatureHtml: '' })
     expect(canSend(p)).toBe(false)
     expect(blockedReason(p)).toBe("{{first name}} isn't a valid fill-in")
   })
 
   it('blocks a recipient the rule refuses', () => {
-    const p = prepare('acceptance', { subject: 'Hi', body: 'x' }, bo, judge(), fields, { templateId: 'acc', followUp: false })
+    const p = prepare('acceptance', { subject: 'Hi', body: 'x' }, bo, judge(), fields, { templateId: 'acc', followUp: false, signatureHtml: '' })
     expect(blockedReason(p)).toBe('No approved talk')
   })
 
   it('lists only the uncovered talks on a follow-up', () => {
     const history = [email({ speakerKey: 'dee@example.com', templateId: 'dec', rule: 'decline', talkIds: ['d1'] })]
     const dee = groups.find((g) => g.speakerKey === 'dee@example.com')!
-    const p = prepare('acceptance', { subject: 'Hi', body: '{{talkTitles}}' }, dee, judge(history), fields, { templateId: 'acc', followUp: true })
+    const p = prepare('acceptance', { subject: 'Hi', body: '{{talkTitles}}' }, dee, judge(history), fields, { templateId: 'acc', followUp: true, signatureHtml: '' })
     expect(canSend(p)).toBe(true)
     expect(p.talkIds).toEqual(['d1'])
+  })
+
+  it('previews a template with html as escaped HTML with the signature', () => {
+    const named = { ...ada, name: { ...ada.name, first: 'A<b>&"' } }
+    const p = prepare('acceptance', { subject: 'Hi', body: 'ignored', html: '<p>Hi <strong>{{firstName}}</strong></p>' }, named, judge(), fields,
+      { templateId: 'acc', followUp: false, signatureHtml: '<p>The DevFest team</p>' })
+    expect(canSend(p)).toBe(true)
+    expect(p.html).toBe('<p>Hi <strong>A&lt;b&gt;&amp;&quot;</strong></p><br><p>The DevFest team</p>')
+  })
+
+  it('previews a template without html from its body', () => {
+    const p = prepare('acceptance', { subject: 'Hi', body: 'See you at {{venue}}' }, ada, judge(), fields,
+      { templateId: 'acc', followUp: false, signatureHtml: '' })
+    expect(p.html).toBe('<p>See you at Hall A</p>')
   })
 })
 

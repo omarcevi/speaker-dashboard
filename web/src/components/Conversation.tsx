@@ -8,6 +8,7 @@ import { useSpeakers } from '../data/useSpeakers.ts'
 import { db } from '../firebase.ts'
 import { bounceSummary, displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
 import { initials } from '../lib/initials.ts'
+import { EmailFrame } from './EmailFrame.tsx'
 import { IconDownload } from './Icons.tsx'
 
 type Email = EmailDoc & { id: string }
@@ -85,7 +86,10 @@ function Ours({ email }: { email: Email }) {
         <div className="grow"><b>DevFest Istanbul ({email.byName})</b><span className="to">to {to}</span></div>
         {sent ? <span className="muted" style={{ fontSize: 12 }}>{shortDateTime(at)}</span> : <StateChip email={email} />}
       </div>
-      <div className="msg-b">{email.text ? <Text text={email.text} /> : <span className="muted">Written when it goes out.</span>}</div>
+      <div className="msg-b">
+        {email.html ? <EmailFrame html={email.html} title={`Email to ${email.to}`} />
+          : email.text ? <Text text={email.text} /> : <span className="muted">Written when it goes out.</span>}
+      </div>
       {email.attachments.length > 0 && (
         <div className="att-row">
           {email.attachments.map((a) => <span key={a.path} className="att">{a.name} <span className="muted">{formatBytes(a.size)}</span></span>)}
@@ -158,7 +162,7 @@ function ReplyBox({ threadId, speakerKey, firstName }: { threadId: string; speak
       <textarea id={id} placeholder={firstName ? `Reply to ${firstName}` : 'Reply'} value={body} onChange={(e) => setBody(e.target.value)} />
       {error && <p className="inline-error" role="alert" style={{ marginTop: 6 }}>{error}</p>}
       <div className="row-end">
-        <span className="hint">Sent from the team mailbox in the same Gmail conversation</span>
+        <span className="hint">Sent from the team mailbox in the same Gmail conversation, with the team signature added</span>
         <button className="btn primary sm" type="submit" disabled={sending || body.trim() === ''}>{sending ? 'Sending…' : 'Send reply'}</button>
       </div>
     </form>

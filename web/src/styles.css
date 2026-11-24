@@ -569,4 +569,5 @@ html.projector .emails-card { display: none; }
 .rich-body .ProseMirror:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; border-radius: var(--r-inner); }
 .rich-body .ProseMirror img { max-width: 100%; height: auto; }
 .rich-body .ProseMirror a { color: var(--pend-ink); }
+.rich-loading { min-height: 247px; background: var(--raised); }
 .email-frame { display: block; width: 100%; min-height: 320px; resize: vertical; border: 1px solid var(--border); border-radius: var(--r-inner); background: #fff; }

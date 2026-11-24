@@ -22,12 +22,14 @@ interface DataValue {
   emails: (EmailDoc & { id: string })[]
   threads: (ThreadDoc & { id: string })[]
   event: EventSettings | null
+  /** The team signature added to every email; '' when none. */
+  signatureHtml: string
   mailMeta: MailMeta | null
   loading: boolean
   error: string | null
 }
 
-type Loaded = Omit<DataValue, 'cards' | 'loading'>
+type Loaded = Omit<DataValue, 'cards' | 'loading' | 'signatureHtml'>
 
 const emptyLoaded: Loaded = {
   submissions: [],
@@ -47,7 +49,7 @@ const emptyLoaded: Loaded = {
   error: null,
 }
 
-const empty: DataValue = { ...emptyLoaded, cards: [], loading: true }
+const empty: DataValue = { ...emptyLoaded, cards: [], signatureHtml: '', loading: true }
 
 const DataContext = createContext<DataValue>(empty)
 
@@ -158,7 +160,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => buildCards(submissions, (id) => reviews.has(id) || scores.has(id) || comments.has(id)),
     [submissions, reviews, scores, comments],
   )
-  const value = useMemo(() => ({ ...data, cards, loading: allowed && ready.size < SOURCES }), [data, cards, allowed, ready])
+  const value = useMemo(
+    () => ({ ...data, cards, signatureHtml: data.event?.signatureHtml ?? '', loading: allowed && ready.size < SOURCES }),
+    [data, cards, allowed, ready],
+  )
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

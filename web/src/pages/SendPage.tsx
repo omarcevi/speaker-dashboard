@@ -2,16 +2,19 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import type { SpeakerGroup } from '../../../functions/src/email/recipients.ts'
 import type { EmailTemplate, RecipientRule, TemplateAttachment } from '../../../functions/src/model.ts'
+import { isBlankHtml, templateHtml } from '../../../functions/src/shared/emailHtml.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { StateChip } from '../components/Conversation.tsx'
+import { EmailFrame } from '../components/EmailFrame.tsx'
 import { IconLeft, IconRight } from '../components/Icons.tsx'
+import LazyRichEditor from '../components/LazyRichEditor.tsx'
 import Marked from '../components/Marked.tsx'
 import StatusChip from '../components/StatusChip.tsx'
 import { useData } from '../data/DataProvider.tsx'
-import { markEmailed, queueEmails, sendTestEmail, type QueueEmailsResult } from '../data/mailActions.ts'
+import { markEmailed, queueEmails, sendTestEmail, type CustomEmail, type QueueEmailsResult } from '../data/mailActions.ts'
 import { useNow } from '../data/useNow.ts'
 import { useSpeakers } from '../data/useSpeakers.ts'
-import { formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
+import { editorFillIns, formatBytes, lastDecisionEmail, RULES, shortDate, toIstanbulMs } from '../lib/emails.ts'
 import {
   blockedReason, canSend, isDecisionRule, istanbulDate, nameList, passes, plural, prepare, recipientRows, speakerName, untickedExcept, visibleSelection,
   type DecisionFilter, type Judge, type Prepared, type RecipientRow, type Tab,
@@ -22,7 +25,7 @@ type Mode = 'batch' | 'custom' | 'followUp'
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const DECISIONS: [DecisionFilter, string][] = [['all', 'All'], ['approved', 'Approved'], ['declined', 'Declined'], ['not-ready', 'Not ready']]
-const CUSTOM_BODY = 'Hi {{firstName}},\n\n'
+const CUSTOM_DRAFT = { subject: '', body: 'Hi {{firstName}},', html: '<p>Hi {{firstName}},</p><p></p>' }
 const DAY = 24 * 3600_000
 /** Read in event handlers only. */
 const clock = () => Date.now()
@@ -43,7 +46,7 @@ function Steps({ names, step, offset }: { names: string[]; step: number; offset:
 }
 
 function MailView({ p, source, cc, attachments }: {
-  p: Prepared; source: { subject: string; body: string }; cc: boolean; attachments: TemplateAttachment[]
+  p: Prepared; source: { subject: string; body: string; html?: string | null }; cc: boolean; attachments: TemplateAttachment[]
 }) {
   return (
     <div className="mail">
@@ -53,7 +56,9 @@ function MailView({ p, source, cc, attachments }: {
         <dt>Subject</dt>
         <dd className="subj">{source.subject ? <Marked text={source.subject} values={p.values} /> : <span className="muted">No subject</span>}</dd>
       </dl>
-      <div className="mail-b">{source.body ? <Marked text={source.body} values={p.values} /> : <span className="muted">No message yet.</span>}</div>
+      <div className="mail-b">
+        {isBlankHtml(templateHtml(source)) ? <span className="muted">No message yet.</span> : <EmailFrame html={p.html} title="Message preview" />}
+      </div>
       {attachments.length > 0 && (
         <div className="mail-att">
           {attachments.map((a) => <span key={a.path} className="att">{a.name} <span className="muted">{formatBytes(a.size)}</span></span>)}
@@ -102,7 +107,7 @@ function useTest(send: (speakerKey: string) => Promise<unknown>) {
 }
 
 function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Template | null; speakerKey: string | null; only: string | null }) {
-  const { emails, event } = useData()
+  const { emails, event, signatureHtml } = useData()
   const sp = useSpeakers()
   const fields = useMemo(() => event?.fields ?? [], [event])
   const now = useNow()
@@ -123,7 +128,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   const [picked, setPicked] = useState<string[]>(speakerKey ? [speakerKey] : [])
   const [at, setAt] = useState(0)
   const [includeCc, setIncludeCc] = useState(true)
-  const [draft, setDraft] = useState({ subject: '', body: CUSTOM_BODY })
+  const [draft, setDraft] = useState(CUSTOM_DRAFT)
   const [when, setWhen] = useState<'now' | 'later'>('now')
   const [date, setDate] = useState(() => istanbulDate(Date.now() + DAY))
   const [time, setTime] = useState('09:00')
@@ -137,10 +142,13 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
   const custom = mode === 'custom'
   const rule: RecipientRule = template?.rule ?? 'anyone'
   const templateId = template?.id ?? null
-  const source = custom ? draft : { subject: template!.subject, body: template!.body }
+  const source = custom ? draft : { subject: template!.subject, body: template!.body, html: template!.html ?? null }
+  // The callable takes html only as a string; a blank message goes as its plain text.
+  const customEmail: CustomEmail | null = !custom ? null
+    : isBlankHtml(draft.html) ? { subject: draft.subject, body: draft.body } : { subject: draft.subject, body: draft.body, html: draft.html }
   const attachments = template?.attachments ?? []
   const decisionTmpl = isDecisionRule(rule)
-  const test = useTest((key) => sendTestEmail({ templateId, custom: custom ? draft : null, speakerKey: key, followUp }))
+  const test = useTest((key) => sendTestEmail({ templateId, custom: customEmail, speakerKey: key, followUp }))
 
   // Step 1: every speaker sorted into tabs.
   const rows = useMemo(() => (mode === 'batch' ? recipientRows(rule, templateId, sp.groups, judge) : []), [mode, rule, templateId, sp.groups, judge])
@@ -153,7 +161,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
 
   // Step 2 on: the recipients picked, as their emails would be written now.
   const prepared = picked.map((k) => sp.byKey.get(k)).filter((g): g is SpeakerGroup => !!g)
-    .map((g) => prepare(rule, source, g, judge, fields, { templateId, followUp }))
+    .map((g) => prepare(rule, source, g, judge, fields, { templateId, followUp, signatureHtml }))
   const sendable = prepared.filter(canSend)
   const blocked = prepared.filter((p) => !canSend(p))
   const shownAt = Math.max(0, Math.min(at, prepared.length - 1))
@@ -185,7 +193,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
     setSendError(null)
     try {
       const r = await queueEmails({
-        batchId, templateId, custom: custom ? draft : null, speakerKeys: keys, followUp, sendAt: at, includeCc, replyToThreadId: null,
+        batchId, templateId, custom: customEmail, speakerKeys: keys, followUp, sendAt: at, includeCc, replyToThreadId: null,
       })
       setResult({ ...r, keys, sendAt: at })
       setStep(4)
@@ -372,8 +380,10 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
                 <input className="input" id="subject" value={draft.subject} placeholder="Subject" onChange={(e) => { test.reset(); setDraft((d) => ({ ...d, subject: e.target.value })) }} />
               </div>
               <div className="field">
-                <label htmlFor="body">Message</label>
-                <textarea className="area" id="body" value={draft.body} onChange={(e) => { test.reset(); setDraft((d) => ({ ...d, body: e.target.value })) }} />
+                <span className="label">Message</span>
+                <LazyRichEditor value={draft.html} ariaLabel="Message" fillIns={editorFillIns(fields)}
+                  onChange={(html) => { test.reset(); setDraft((d) => ({ ...d, html })) }}
+                  onText={(body) => setDraft((d) => ({ ...d, body }))} />
                 <span className="hint">Fill-ins work here too. This email isn't saved as a template.</span>
               </div>
             </section>
@@ -391,7 +401,7 @@ function Flow({ mode, template, speakerKey, only }: { mode: Mode; template: Temp
           <div className="actionbar">
             <span className="grow" />
             <Link className="btn text" to={crumbTo}>Cancel</Link>
-            <button className="btn primary" disabled={!current || !draft.subject.trim() || !draft.body.trim() || !canSend(current)} onClick={() => setStep(3)}>
+            <button className="btn primary" disabled={!current || !draft.subject.trim() || isBlankHtml(draft.html) || !canSend(current)} onClick={() => setStep(3)}>
               Next: when to send
             </button>
           </div>

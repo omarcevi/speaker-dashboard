@@ -7,9 +7,11 @@ import { uploadEmailImage } from '../lib/emailImages.ts'
 
 type FillIn = { name: string; label: string }
 
-export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
+export function RichEditor({ value, onChange, onText, fillIns, ariaLabel }: {
   value: string
   onChange: (html: string) => void
+  /** The plain text of each edit, a blank line between blocks. */
+  onText?: (text: string) => void
   fillIns: FillIn[]
   ariaLabel: string
 }) {
@@ -37,7 +39,10 @@ export function RichEditor({ value, onChange, fillIns, ariaLabel }: {
       attributes: { 'aria-label': ariaLabel, role: 'textbox', 'aria-multiline': 'true' },
       transformPastedHTML: (html) => cleanEmailHtml(html),
     },
-    onUpdate: ({ editor: e }) => onChange(e.getHTML()),
+    onUpdate: ({ editor: e }) => {
+      onChange(e.getHTML())
+      onText?.(e.getText({ blockSeparator: '\n\n' }))
+    },
   })
 
   // Pull in outside changes only when they differ, so typing never moves the cursor.
