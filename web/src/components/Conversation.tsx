@@ -1,6 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { collection, onSnapshot } from 'firebase/firestore'
-import type { EmailDoc, ReceivedMessage } from '../../../functions/src/model.ts'
+import type { EmailDoc, ReceivedMessage, ThreadDoc } from '../../../functions/src/model.ts'
 import { useAuth } from '../auth/AuthProvider.tsx'
 import { useData } from '../data/DataProvider.tsx'
 import { emailAttachment, queueEmails } from '../data/mailActions.ts'
@@ -8,8 +8,10 @@ import { useSpeakers } from '../data/useSpeakers.ts'
 import { db } from '../firebase.ts'
 import { bounceSummary, displayName, formatBytes, linkParts, shortDateTime, stateLabel, stateTone } from '../lib/emails.ts'
 import { initials } from '../lib/initials.ts'
+import { canDraft, currentDraft, prefill, seenOf, sendStep, type Seen } from '../lib/replyAssist.ts'
 import { EmailFrame } from './EmailFrame.tsx'
 import { IconDownload } from './Icons.tsx'
+import { AiLine, DraftButton, GapConfirm, SuggestedReply } from './ReplyAssist.tsx'
 
 type Email = EmailDoc & { id: string }
 type Message = ReceivedMessage & { id: string }
@@ -134,13 +136,32 @@ function Received({ threadId, msg, reason }: { threadId: string; msg: Message; r
   )
 }
 
-function ReplyBox({ threadId, speakerKey, firstName }: { threadId: string; speakerKey: string; firstName: string }) {
-  const [body, setBody] = useState('')
+function ReplyBox({ threadId, speakerKey, firstName, thread }: { threadId: string; speakerKey: string; firstName: string; thread: ThreadDoc | undefined }) {
+  const draft = currentDraft(thread)
+  const [body, setBody] = useState(draft?.text ?? '')
+  const [seen, setSeen] = useState<Seen | null>(draft ? seenOf(draft) : null)
+  // A newer draft (Redraft) replaces the box only while it is empty or still holds the last draft.
+  const next = prefill(body, seen, draft)
+  if (next) {
+    setBody(next.body)
+    setSeen(next.seen)
+  }
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [gap, setGap] = useState<string | null>(null)
+  const [drafting, setDrafting] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
   const id = useId()
-  const send = async () => {
-    if (body.trim() === '' || sending) return
+  const send = async (confirmed: boolean) => {
+    if (sending) return
+    const step = sendStep(body, confirmed)
+    if (step.kind === 'empty') return
+    if (step.kind === 'confirm') {
+      setGap(step.gap)
+      return
+    }
+    setGap(null)
     setSending(true)
     setError(null)
     try {
@@ -157,13 +178,22 @@ function ReplyBox({ threadId, speakerKey, firstName }: { threadId: string; speak
     }
   }
   return (
-    <form className="reply" onSubmit={(e) => { e.preventDefault(); void send() }}>
+    <form className="reply" onSubmit={(e) => { e.preventDefault(); void send(false) }}>
       <label className="vh" htmlFor={id}>Reply</label>
-      <textarea id={id} placeholder={firstName ? `Reply to ${firstName}` : 'Reply'} value={body} onChange={(e) => setBody(e.target.value)} />
+      <textarea ref={box} id={id} placeholder={firstName ? `Reply to ${firstName}` : 'Reply'} value={body}
+        onChange={(e) => { setBody(e.target.value); setGap(null) }} />
       {error && <p className="inline-error" role="alert" style={{ marginTop: 6 }}>{error}</p>}
+      {draftError && <p className="inline-error" role="alert" style={{ marginTop: 6 }}>{draftError}</p>}
+      {gap && <GapConfirm gap={gap} onSend={() => void send(true)} onKeep={() => { setGap(null); box.current?.focus() }} />}
       <div className="row-end">
         <span className="hint">Sent from the team mailbox in the same Gmail conversation, with the team signature added</span>
-        <button className="btn primary sm" type="submit" disabled={sending || body.trim() === ''}>{sending ? 'Sending…' : 'Send reply'}</button>
+        <span className="actions">
+          {canDraft(thread) && (
+            <DraftButton threadId={threadId} hasDraft={draft !== null} drafting={drafting || !!thread?.drafting}
+              onBusy={setDrafting} onError={setDraftError} />
+          )}
+          <button className="btn primary sm" type="submit" disabled={sending || body.trim() === ''}>{sending ? 'Sending…' : 'Send reply'}</button>
+        </span>
       </div>
     </form>
   )
@@ -177,6 +207,8 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
   const { byKey } = useSpeakers()
   const [messages, setMessages] = useState<Message[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [settling, setSettling] = useState(false)
+  const [settleError, setSettleError] = useState<string | null>(null)
   const panel = useRef<HTMLElement>(null)
   const headingId = useId()
   const close = useRef(onClose)
@@ -230,6 +262,16 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
   const g = byKey.get(speakerKey)
   const speakerName = g ? `${g.name.first} ${g.name.last}`.trim() : root?.to ?? ''
   const bounceReason = ours.find((e) => e.bounce !== null)?.bounce?.reason.trim() || null
+  // The AI's reading (and, for members, the suggested reply) sits under the newest reply, or above the reply box
+  // when that reply isn't loaded.
+  const draft = currentDraft(thread)
+  const assist = thread && (
+    <>
+      <AiLine thread={thread} me={admin && me ? me : null} busy={settling} error={settleError} onBusy={setSettling} onError={setSettleError} />
+      {!admin && draft && <SuggestedReply text={draft.text} />}
+    </>
+  )
+  const newestShown = !!thread?.lastReplyId && items.some((it) => it.kind === 'received' && it.msg.id === thread.lastReplyId)
   const bounced = ours.some((e) => e.bounce !== null) || (messages ?? []).some((m) => m.kind === 'bounce')
 
   // Keep Tab inside the dialog.
@@ -261,10 +303,16 @@ export default function Conversation({ threadId, onClose }: { threadId: string; 
         <div className="sheet-body">
           {loadError && <div className="banner" role="alert" style={{ margin: 0 }}>{loadError}</div>}
           {items.map((it) =>
-            it.kind === 'ours' ? <Ours key={`e-${it.email.id}`} email={it.email} /> : <Received key={`m-${it.msg.id}`} threadId={threadId} msg={it.msg} reason={bounceReason} />)}
+            it.kind === 'ours' ? <Ours key={`e-${it.email.id}`} email={it.email} /> : (
+              <Fragment key={`m-${it.msg.id}`}>
+                <Received threadId={threadId} msg={it.msg} reason={bounceReason} />
+                {it.msg.id === thread?.lastReplyId && assist}
+              </Fragment>
+            ))}
           {messages === null && !loadError && <p className="muted">Loading replies…</p>}
+          {!newestShown && assist}
         </div>
-        {admin && !bounced && speakerKey && <ReplyBox threadId={threadId} speakerKey={speakerKey} firstName={g?.name.first ?? ''} />}
+        {admin && !bounced && speakerKey && <ReplyBox threadId={threadId} speakerKey={speakerKey} firstName={g?.name.first ?? ''} thread={thread} />}
       </aside>
     </>
   )

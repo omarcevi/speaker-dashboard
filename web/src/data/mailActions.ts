@@ -33,3 +33,5 @@ export const retryEmail = (id: string) => call<{ id: string }, { ok: true }>('re
 /** `at` is optional so a retried call with the same value creates nothing new. */
 export const markEmailed = call<{ templateId: string; speakerKeys: string[]; at?: number }, { created: number }>('markEmailed')
 export const emailAttachment = call<EmailAttachmentInput, EmailAttachmentResult>('emailAttachment')
+/** Asks the AI for a fresh draft of an answer to the thread's newest reply; the draft lands on the thread doc. */
+export const draftReply = call<{ threadId: string }, { ok: true }>('draftReplyNow')
