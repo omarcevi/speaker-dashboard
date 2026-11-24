@@ -4,7 +4,7 @@ import type { Firestore } from 'firebase-admin/firestore'
 import type { EmailDoc, RecipientRule } from '../model.js'
 import { renderHtmlEmail, templateHtml } from '../shared/emailHtml.js'
 import { isFillInName } from './fillIns.js'
-import { htmlToText } from './parseMessage.js'
+import { emailHtmlToText } from './htmlText.js'
 import type { LoadedSpeakers } from './loadSpeakers.js'
 import { eligibility, fillInValues, type SpeakerGroup } from './recipients.js'
 
@@ -50,7 +50,7 @@ export function compose(
     { subject: opts.subjectOverride === undefined ? source.subject : '', html: templateHtml(source) }, values, loaded.signatureHtml,
   )
   if (!r.ok) return { ok: false, reason: renderProblem(r.missing, r.empty) }
-  return { ok: true, talkIds: e.talkIds, cc, subject: opts.subjectOverride ?? r.subject, text: htmlToText(r.html), html: r.html }
+  return { ok: true, talkIds: e.talkIds, cc, subject: opts.subjectOverride ?? r.subject, text: emailHtmlToText(r.html), html: r.html }
 }
 
 export { inFlightConflict } from './recipients.js'
