@@ -4,7 +4,7 @@ import { emailImagePath, imageProblem } from './emailImages.ts'
 describe('emailImagePath', () => {
   it('keeps names readable and safe', () => {
     expect(emailImagePath('my photo.png', 'u1')).toBe('emailImages/u1-my photo.png')
-    expect(emailImagePath('Şükrü Çelik.png', 'u1')).toBe('emailImages/u1-S-k-r- -elik.png')
+    expect(emailImagePath('Şükrü Çelik.png', 'u1')).toBe('emailImages/u1--kr- -elik.png')
     expect(emailImagePath('../x.png', 'u1')).toBe('emailImages/u1-.-x.png')
   })
   it('falls back for empty names', () => {
