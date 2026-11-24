@@ -45,7 +45,7 @@ npm run build --prefix functions
 npx firebase emulators:start --only auth,firestore,functions,storage --project demo-cfp
 
 # 2. Seed: 12 fake Form rows, 3 fake Advocu applications, 3 users, fake AI results,
-#    the email templates and a few sample emails (a sent acceptance with a reply, a bounce, a scheduled email)
+#    the email templates, three stages and a few sample emails (a sent acceptance with a reply, a bounce, a scheduled email)
 cd functions && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npx tsx scripts/seed-emulator.ts
 
 # 3. Web app at http://localhost:5173
@@ -157,6 +157,10 @@ The owner does these steps once:
    ```
    This adds the send queue (every minute) and the reply check (every 5 minutes). Within a minute, the send queue creates the **Acceptance** and **Decline** templates with placeholder text, and empty event settings (event name, date, venue). Fill in the event settings and edit the templates before sending.
    After any deploy, admins reload open dashboard tabs, so their editor and previews match what the server now sends.
+
+### Stages
+
+**Emails → Stages** shows, for each speaker, which emails of each stage (for example Acceptance, Event info) have been sent. **Missing** means the stage is due and nothing was sent yet. **Needs follow-up** means the speaker replied and the reply has not been answered. Everyone on the team can see the tab. Admins send from it, mark a stage as done or skip it for one speaker, add a stage to one speaker, and manage the stages under **Manage**. Nothing is ever sent automatically: every email is sent by an admin.
 
 **Team signature and images.** Emails are sent as HTML, and plain text is included for mail apps that need it. The team signature is edited under **Emails → Event settings** (Team signature). It is added to the end of every email, replies included, so leave it out of the templates. For a layout like a Gmail signature (logo, divider, coloured text), switch the editor to **HTML** and paste the signature's HTML; tables and basic inline styles are kept. Fill-ins work in it too, and an empty one blocks the email like one in the body. Images are uploaded in the editor (admins only, PNG, JPEG, GIF or WebP under 5 MB). They are stored in Firebase Storage under `emailImages/` and linked by their download URL, so deploy `storage` too. The previews show the exact HTML that is sent. Outlook may ask readers to show images, so don't rely on an image for anything important.
 
