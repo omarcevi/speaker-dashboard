@@ -22,6 +22,7 @@ beforeAll(async () => {
       });
     }
     await uploadBytes(ref(ctx.storage(), 'emailAttachments/t1/a.pdf'), new Uint8Array([1, 2, 3]), { contentType: 'application/pdf' });
+    await uploadBytes(ref(ctx.storage(), 'emailImages/seed.png'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
     await uploadBytes(ref(ctx.storage(), 'photos/x'), new Uint8Array([1, 2, 3]), { contentType: 'image/png' });
   });
 });
@@ -78,5 +79,30 @@ describe('email attachment rules', () => {
     await assertFails(deleteObject(att(as('rem1'))));
     await assertFails(deleteObject(att(signedOut())));
     await assertSucceeds(deleteObject(att(as('adm1'))));
+  });
+});
+
+describe('email image rules', () => {
+  const img = (s: ReturnType<typeof as>, f = 'seed.png') => ref(s, `emailImages/${f}`);
+  const png = { contentType: 'image/png' };
+  it('lets an admin upload a small image', async () => {
+    await assertSucceeds(uploadBytes(img(as('adm1'), 'ok.png'), new Uint8Array(1024), png));
+  });
+  it('denies an admin upload that is not an image', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'page.html'), new Uint8Array(1024), { contentType: 'text/html' }));
+  });
+  it('denies an admin upload of 5 MB or more', async () => {
+    await assertFails(uploadBytes(img(as('adm1'), 'big.png'), new Uint8Array(6 * 1024 * 1024), png));
+  });
+  it('denies a member upload', async () => {
+    await assertFails(uploadBytes(img(as('mem1'), 'm.png'), new Uint8Array(1024), png));
+  });
+  it('denies every read through the rules', async () => {
+    await assertFails(getBytes(img(as('mem1'))));
+    await assertFails(getBytes(img(as('adm1'))));
+  });
+  it('lets only an admin delete', async () => {
+    await assertFails(deleteObject(img(as('mem1'))));
+    await assertSucceeds(deleteObject(img(as('adm1'))));
   });
 });
